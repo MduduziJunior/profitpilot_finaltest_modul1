@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<!--
+================================================================================
+PROFITPILOT TEST 10 - FINAL RECORDING MODULE WITH 3-MINUTE AUTO LOGOUT
+================================================================================
+
+This is a complete Notepad / VS Code / GitHub Pages ready HTML file.
+It continues from the latest saved Test 9.0.4 Supabase Easy Activation direction
+and prepares Test 10 as the final test for the RECORDING MODULE.
+
+PROFITPILOT PROJECT STRUCTURE:
+1. Recording Module  -> this Test 10 file finalises the recording foundation.
+2. Organising Module -> later module to classify, structure, and organise records.
+3. Analysing Module  -> later module to calculate ratios, trends, dashboards, risks.
+4. Advising Module   -> later module to give recommendations and decision support.
+
+PROFITPILOT LAW OF UPDATES PRESERVED:
+- No built-in/sample/demo financial records.
+- User/customer data must be entered only through the user interface.
+- Code is used only for app improvements, not for ordinary financial entry.
+- Existing saved records must not be overwritten without confirmation.
+- Supabase is the intended main source of truth for Test 10 cloud use.
+- localStorage is cache/emergency fallback.
+- JSON import/export is emergency backup and migration only.
+- Profile separation is preserved.
+- Old versions remain reference only. This file is a complete new version.
+
+TEST 10 MAJOR NEW FEATURE:
+- General Ledger / T-Ledger inside Recording Module.
+- Accounts include Bank, Cash, Accounts Receivable, Accounts Payable, asset,
+  liability, equity, income, expense, and custom ledger accounts.
+- Ledger shows date, accounting month, transaction detail, debit, credit,
+  running balance, balance b/d, and balance c/d.
+- Each account clearly shows positive, negative, zero, normal, or review status.
+- Manual ledger corrections are voided/reversed by correction entries, not erased.
+- Auto cloud save fixture: 30 seconds after a new record is saved or an existing record is edited/removed/voided, ProfitPilot queues a silent Supabase cloud save when cloud login is active.
+- Optional transaction receipt/proof picture fixture using Supabase Storage when cloud is active; profile JSON stores metadata/path only, not the image itself.
+- Transaction record table is sorted by date and uses one dedicated Date / Receipt Proof column to show whether a receipt/proof image or PDF was provided.
+- Automatic logout fixture: after 3 minutes of inactivity, ProfitPilot logs out safely without deleting local cache, JSON backup, or cloud records.
+- Login interface background image fixture: uses images/background.jpg from the same images folder as logo.png.
+
+SUPABASE EASY ACTIVATION:
+Search this file for: PROFITPILOT_SUPABASE_CONFIG
+Paste only Project URL and Publishable/anon key. Never paste service_role key,
+secret key, database password, or any private credential in public frontend code.
+
+================================================================================
+SUPABASE SQL FOR TEST 10 CLOUD SOURCE OF TRUTH
+================================================================================
+
+create table if not exists profitpilot_profiles (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  profile_key text not null,
+  profile_name text not null,
+  username text not null,
+  default_currency text default 'TWD',
+  profile_data jsonb not null default '{}'::jsonb,
+  cloud_source text default 'supabase',
+  local_updated_at timestamptz,
+  last_cloud_save_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id, profile_key)
+);
+
+create table if not exists profitpilot_records (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  profile_key text not null,
+  record_type text not null,
+  record_id text not null,
+  record_data jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now(),
+  unique(user_id, profile_key, record_type, record_id)
+);
+
+create table if not exists profitpilot_cloud_versions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  profile_key text not null,
+  version_name text,
+  snapshot_data jsonb not null default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+create table if not exists profitpilot_audit_logs (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  profile_key text,
+  action text not null,
+  details text,
+  log_data jsonb default '{}'::jsonb,
+  created_at timestamptz default now()
+);
+
+alter table profitpilot_profiles enable row level security;
+alter table profitpilot_records enable row level security;
+alter table profitpilot_cloud_versions enable row level security;
+alter table profitpilot_audit_logs enable row level security;
+
+create policy "Users can manage their own ProfitPilot profiles"
+on profitpilot_profiles for all to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users can manage their own ProfitPilot records"
+on profitpilot_records for all to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users can manage their own ProfitPilot cloud versions"
+on profitpilot_cloud_versions for all to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+create policy "Users can manage their own ProfitPilot audit logs"
+on profitpilot_audit_logs for all to authenticated
+using ((select auth.uid()) = user_id)
+with check ((select auth.uid()) = user_id);
+
+-- Optional receipt/proof picture storage for Test 10.
+-- Create a private Supabase Storage bucket named profitpilot-receipts.
+insert into storage.buckets (id, name, public)
+values ('profitpilot-receipts', 'profitpilot-receipts', false)
+on conflict (id) do nothing;
+
+create policy "Users can upload their own ProfitPilot receipt files"
+on storage.objects for insert to authenticated
+with check (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+create policy "Users can read their own ProfitPilot receipt files"
+on storage.objects for select to authenticated
+using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+create policy "Users can update their own ProfitPilot receipt files"
+on storage.objects for update to authenticated
+using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text)
+with check (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+create policy "Users can delete their own ProfitPilot receipt files"
+on storage.objects for delete to authenticated
+using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+
+================================================================================
+END NOTES
+================================================================================
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ProfitPilot Test 10 — Final Recording Module</title>
+  <link rel="icon" type="image/png" href="images/logo.png" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root{--primary:#0f766e;--primary-dark:#115e59;--secondary:#0ea5e9;--bg:#eef2f6;--card:#fff;--text:#0f172a;--muted:#64748b;--border:#dbe3ea;--danger:#dc2626;--warning:#d97706;--success:#16a34a;--shadow:0 10px 28px rgba(15,23,42,.08);--radius:18px}
+    *{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}body{margin:0;background:var(--bg);color:var(--text)}.hidden{display:none!important}button,input,select,textarea{font-size:14px}button{border:none;border-radius:12px;padding:10px 14px;cursor:pointer;background:var(--primary);color:#fff;font-weight:800}button:hover{filter:brightness(.96)}button:disabled{opacity:.55;cursor:not-allowed}.secondary-btn{background:#334155}.danger-btn{background:var(--danger)}.warning-btn{background:var(--warning)}.light-btn{background:#fff;color:var(--primary)}input,select,textarea{width:100%;padding:11px;border:1px solid #cbd5e1;border-radius:12px;background:#fff}textarea{min-height:80px;resize:vertical}label{font-size:13px;color:#334155;font-weight:700}.muted{color:var(--muted);font-size:14px;line-height:1.45}.small{font-size:12px;color:#64748b}.right{text-align:right}.nowrap{white-space:nowrap}
+    .auth-screen{min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(135deg,rgba(15,118,110,.72),rgba(14,165,233,.64)),url("images/background.jpg") center/cover no-repeat fixed;position:relative;overflow:hidden}.auth-screen::before{content:"";position:absolute;inset:0;background:radial-gradient(circle at top left,rgba(255,255,255,.22),transparent 32%),linear-gradient(180deg,rgba(15,23,42,.12),rgba(15,23,42,.34));pointer-events:none}.auth-card{width:100%;max-width:510px;background:rgba(255,255,255,.94);backdrop-filter:blur(8px);border-radius:24px;padding:30px;box-shadow:0 24px 70px rgba(15,23,42,.34);position:relative;z-index:1;border:1px solid rgba(255,255,255,.45)}.auth-brand{text-align:center;margin-bottom:20px}.auth-brand img{width:86px;height:86px;object-fit:contain;border-radius:22px;background:#f8fafc;border:1px solid var(--border);padding:8px;margin-bottom:10px}.auth-brand h1{margin:0;font-size:30px}.auth-brand p{margin:6px 0 0;color:var(--muted);font-size:14px}.auth-form{display:grid;gap:13px}.auth-form h2{text-align:center;margin:0 0 6px}.auth-switch,.auth-note{text-align:center;color:var(--muted);font-size:14px;margin:14px 0 0}.auth-switch a{color:var(--primary);font-weight:800;text-decoration:none}.auth-note{background:#fff7ed;color:#9a3412;border-left:5px solid #f97316;padding:12px;border-radius:14px;text-align:left;line-height:1.45}.error-box{display:none;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;border-radius:12px;padding:11px;font-size:13px;margin-bottom:12px}.error-box.show{display:block}.login-import-box{margin-top:16px;padding:14px;border-radius:16px;background:#f8fafc;border:1px solid #e2e8f0;text-align:center}.login-import-box p{margin:0 0 10px;color:var(--muted);font-size:13px;line-height:1.45}.login-import-label{display:block;border-radius:14px;padding:12px;background:#0f172a;color:#fff;font-weight:800;cursor:pointer}.login-import-label input{display:none}
+    header{background:linear-gradient(90deg,#157b7f,#1d9bca);color:#fff;padding:16px 18px;position:sticky;top:0;z-index:100;box-shadow:0 10px 20px rgba(15,23,42,.08);display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.brand{display:flex;align-items:center;gap:12px}.brand img{width:52px;height:52px;object-fit:contain;border-radius:12px;background:rgba(255,255,255,.18);padding:6px}.brand h1{margin:0;font-size:28px}.brand p{margin:4px 0 0;font-size:13px;opacity:.95}.top-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}.top-actions button,.top-actions label{background:#fff;color:#0b6a72;border-radius:14px;padding:11px 16px;font-weight:800;cursor:pointer}.top-actions .danger-btn{background:#dc2626;color:#fff}.top-actions .secondary-btn{background:#334155;color:#fff}.top-actions input[type=file]{display:none}
+    nav{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid var(--border);position:sticky;top:84px;z-index:90}nav button{background:#dfeaf3;color:#0d4f82;border-radius:14px;padding:10px 16px}nav button.active{background:var(--primary);color:#fff}main{padding:18px 14px 40px}.section{display:none}.section.active{display:block}.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px;margin-bottom:18px}.card h2,.card h3{margin-top:0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.metric-card{background:#fff;border:1px solid var(--border);border-radius:18px;padding:18px;min-height:135px;box-shadow:var(--shadow)}.metric-card p{margin:0;color:#374151;font-weight:700}.metric-card h3{margin:18px 0 0;color:#0b1f4d;font-size:26px}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}.full{grid-column:1/-1}.table-wrap{overflow-x:auto;border-radius:16px;border:1px solid var(--border);margin-top:12px}table{width:100%;min-width:1050px;border-collapse:collapse;background:#fff}th,td{padding:11px;border-bottom:1px solid #e2e8f0;text-align:left;vertical-align:top;font-size:13px}th{background:#edf4fa;color:#0f172a}.pill{display:inline-block;border-radius:999px;padding:5px 9px;font-size:12px;font-weight:800;background:#e0f2fe;color:#0369a1}.pill.good{background:#dcfce7;color:#166534}.pill.warn{background:#ffedd5;color:#9a3412}.pill.bad{background:#fee2e2;color:#991b1b}.alert{padding:12px;border-radius:14px;background:#eef6ff;border-left:5px solid #0ea5e9;margin:10px 0;font-size:14px;line-height:1.45}.alert.good{background:#ecfdf5;border-left-color:#10b981;color:#166534}.alert.warning{background:#fff7ed;border-left-color:#f97316;color:#9a3412}.alert.danger{background:#fef2f2;border-left-color:#ef4444;color:#991b1b}.chart-box{height:300px}.modal{position:fixed;inset:0;z-index:1000;display:none;place-items:center;background:rgba(15,23,42,.6);padding:20px}.modal.show{display:grid}.modal-card{width:100%;max-width:560px;background:#fff;border-radius:24px;padding:26px;box-shadow:0 24px 70px rgba(15,23,42,.28)}.checklist{display:grid;gap:8px}.check{display:flex;justify-content:space-between;gap:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:10px}.small-actions{display:flex;gap:8px;flex-wrap:wrap}.cloud-panel{border:2px dashed #0ea5e9;background:#f0f9ff}.code-box{font-family:Consolas,monospace;background:#0f172a;color:#e2e8f0;border-radius:14px;padding:14px;white-space:pre-wrap;overflow-x:auto;font-size:13px}.ledger-status{display:inline-block;border-radius:999px;padding:5px 10px;font-size:12px;font-weight:900;white-space:nowrap}.ledger-positive{background:#dcfce7;color:#166534}.ledger-negative{background:#fee2e2;color:#991b1b}.ledger-zero{background:#e2e8f0;color:#334155}.ledger-review{background:#ffedd5;color:#9a3412}.ledger-taccount{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}.ledger-side{border:1px solid #dbe3ea;border-radius:14px;overflow:hidden;background:#fff}.ledger-side h3{margin:0;padding:10px;background:#edf4fa;font-size:15px}.ledger-side table{min-width:430px;margin:0}.module-badge{display:inline-block;background:#ecfeff;color:#0e7490;border:1px solid #a5f3fc;padding:6px 10px;border-radius:999px;font-weight:900;font-size:12px}
+
+    .countdown-toast{position:fixed;right:18px;bottom:18px;z-index:1500;display:none;max-width:360px;background:#fff7ed;color:#9a3412;border:1px solid #fed7aa;border-left:6px solid #f97316;border-radius:18px;box-shadow:var(--shadow);padding:16px}.countdown-toast.show{display:block}.filter-card{background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:14px;margin:12px 0}.score-ring{display:flex;align-items:center;justify-content:center;width:116px;height:116px;border-radius:999px;background:conic-gradient(#0ea5e9 var(--score), #e2e8f0 0);font-weight:900;font-size:26px;color:#0f172a;margin:8px auto}.manual-list{line-height:1.7}.manual-list strong{color:#0b6a72}.status-complete{background:#dcfce7;color:#166534}.status-review{background:#ffedd5;color:#9a3412}.status-warning{background:#fee2e2;color:#991b1b}.status-cloud{background:#e0f2fe;color:#0369a1}
+    @media(max-width:760px){nav{top:120px}.top-actions{justify-content:flex-start}table{min-width:850px}.ledger-taccount{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand"><img src="images/logo.png" alt="ProfitPilot Logo" onerror="this.style.display='none'" /><h1>ProfitPilot</h1><p class="login-module-label">ProfitPilot Test 10 — Final Recording Module</p></div>
+      <div id="authError" class="error-box"></div>
+      <div id="loginBox" class="auth-form"><h2>Login</h2><div><label>Username</label><input id="loginUsername" autocomplete="username" /></div><div><label>Password / PIN</label><input id="loginPassword" type="password" autocomplete="current-password" /></div><button type="button" onclick="login()">Login</button><button type="button" class="secondary-btn" onclick="showRecovery()">Forgot / Reset PIN</button><p class="auth-switch">Don't have an account? <a href="#" onclick="showRegister();return false;">Register</a></p></div>
+      <div id="registerBox" class="auth-form hidden"><h2>Register</h2><div><label>Username / Profile Name</label><input id="regUsername" autocomplete="username" /></div><div><label>Password / PIN</label><input id="regPassword" type="password" autocomplete="new-password" /></div><div><label>Confirm Password / PIN</label><input id="regConfirmPassword" type="password" autocomplete="new-password" /></div><div><label>Default Currency</label><select id="regCurrency"><option value="TWD">NTD / TWD</option><option value="USD">USD</option><option value="SZL">E / SZL</option></select></div><div><label>Recovery Question</label><input id="regRecoveryQuestion" placeholder="Example: My first school?" /></div><div><label>Recovery Answer</label><input id="regRecoveryAnswer" /></div><button type="button" onclick="registerAccount()">Register</button><p class="auth-switch">Already have an account? <a href="#" onclick="showLogin();return false;">Login</a></p></div>
+      <div id="recoveryBox" class="auth-form hidden"><h2>Reset PIN</h2><div><label>Username</label><input id="recoveryUsername" oninput="showRecoveryQuestion()" /></div><div id="recoveryQuestionDisplay" class="alert">Enter username to view saved recovery question.</div><div><label>Recovery Answer</label><input id="recoveryAnswerInput" /></div><div><label>New PIN / Password</label><input id="recoveryNewPin" type="password" /></div><div><label>Confirm New PIN</label><input id="recoveryConfirmPin" type="password" /></div><button type="button" onclick="resetPinWithRecovery()">Reset Local Emergency PIN</button><p class="auth-switch"><a href="#" onclick="showLogin();return false;">Back to Login</a></p></div>
+      <div class="login-import-box"><p>Already have a ProfitPilot JSON backup? Import it before login.</p><label class="login-import-label">Import JSON Backup<input id="loginJsonImport" type="file" accept=".json,application/json" onchange="importJsonFromLogin(event)" /></label><p class="muted" style="margin-top:10px;">No sample data is added. Only your selected JSON backup is installed.</p></div>
+      <div class="auth-note"><strong>Cloud notice:</strong> Test 10 is the final Recording Module test. Supabase is the intended main source of truth. JSON import/export remains emergency backup and migration only.</div>
+    </div>
+  </div>
+  <div id="app" class="hidden">
+    <header><div class="brand"><img src="images/logo.png" alt="ProfitPilot Logo" onerror="this.style.display='none'" /><div><h1>ProfitPilot</h1><p id="activeProfileText">Test 10 Final Recording Module</p></div></div><div class="top-actions"><button class="light-btn" onclick="exportJson()">Export JSON</button><label>Import JSON<input type="file" accept=".json,application/json" onchange="importJson(event)" /></label><button class="light-btn" onclick="exportActiveProfile()">Export Active Profile</button><button class="light-btn" onclick="exportCsv()">Export CSV</button><label>Cloud Backup Name <input id="cloudBackupName" type="text" placeholder="before-test10" style="max-width:150px;margin-left:6px;padding:7px;border:1px solid #cbd5e1;border-radius:10px;" /></label><button class="light-btn" onclick="saveActiveProfileToSupabase()">Save to Cloud</button><button class="warning-btn" onclick="loadActiveProfileFromSupabase()">Load from Cloud</button><button class="light-btn" onclick="window.print()">Print Report</button><button class="light-btn" onclick="openChangePin()">Change PIN</button><button class="light-btn" onclick="lockApp()">Lock</button><button class="danger-btn" onclick="confirmReset()">Reset App Data</button><button class="secondary-btn" onclick="logout()">Logout</button></div></header>
+    <nav id="tabs"></nav>
+    <main>
+      <section id="dashboard" class="section active">
+        <div class="card"><span class="module-badge">Recording Module / Test 10 Final</span><h2>Recording Module Control Center</h2><p class="muted">This file is a complete standalone version for the Recording module. It records customer-entered data, cloud-saves the active profile, and adds the General Ledger / T-Ledger foundation before the Organising module.</p><div id="appStatus" class="alert"></div><div id="backupStatus" class="alert"></div><div id="cloudStatus" class="alert warning"></div><div class="grid" id="metricsGrid"></div></div>
+        <div class="card"><h2>Profile Manager</h2><div id="profileIdentity" class="alert"></div><div id="profileList" class="grid"></div></div>
+        <div class="card"><h2>Data Completeness, Review Flags & Financial Health</h2><div class="grid"><div class="card" style="box-shadow:none;"><h3>Data Completeness</h3><div id="completenessScore"></div></div><div class="card" style="box-shadow:none;"><h3>Financial Health Explanation</h3><div id="healthExplanation"></div></div></div><h3>Review Required Flags</h3><div id="reviewFlags"></div></div>
+        <div class="card"><h2>Monthly Closing Checklist</h2><div id="closingChecklist" class="checklist"></div></div>
+        <div class="card"><h2>Project Dashboard</h2><div id="projectDashboard" class="grid"></div></div>
+        <div class="card"><h2>Data Integrity Check</h2><button onclick="runIntegrityCheck()">Run Data Integrity Check</button> <button class="secondary-btn" onclick="exportIntegrityReport()">Export Integrity Report</button><div id="integritySummary" class="alert"></div><div class="table-wrap"><table><thead><tr><th>Severity</th><th>Area</th><th>Issue</th><th>Suggested Action</th></tr></thead><tbody id="integrityTable"></tbody></table></div></div>
+        <div class="card"><h2>Manual Currency-Rate Disclosure</h2><p class="muted">Use this when a live exchange rate fails or when a specific accounting rate must be documented.</p><form class="form-grid" onsubmit="saveRateDisclosure(event)"><div><label>Currency</label><select id="rateCurrency"><option value="USD">USD to NTD</option><option value="SZL">E/SZL to NTD</option><option value="TWD">NTD to NTD</option></select></div><div><label>Rate to NTD</label><input type="number" id="manualRate" step="0.000001" required /></div><div><label>Date Used</label><input type="date" id="manualRateDate" required /></div><div><label>Source</label><input id="manualRateSource" placeholder="Bank, XE, manual note..." required /></div><div class="full"><label>Reason</label><input id="manualRateReason" required /></div><div class="full"><button type="submit">Save Rate Disclosure</button></div></form></div>
+        <div class="card"><h2>Charts</h2><div class="grid"><div class="card"><h3>Income vs Expenses</h3><div class="chart-box"><canvas id="incomeExpenseChart"></canvas></div></div><div class="card"><h3>Assets vs Liabilities</h3><div class="chart-box"><canvas id="balanceChart"></canvas></div></div></div></div>
+      </section>
+      <section id="transactions" class="section"><div class="card"><h2>Transactions</h2><form class="form-grid" onsubmit="saveTransaction(event)"><input type="hidden" id="transactionId" /><div><label>Date</label><input type="date" id="transactionDate" required /></div><div><label>Accounting Month</label><input type="month" id="transactionMonth" required /></div><div><label>Type</label><select id="transactionType" required><option value="income">Income</option><option value="expense">Expense</option><option value="savings">Savings</option><option value="investment">Investment Contribution</option><option value="debt">Debt Payment</option></select></div><div><label>Status</label><select id="transactionStatus" required><option value="paid">Paid / Received</option><option value="unpaid">Unpaid / Accrued</option><option value="receivable">Receivable</option><option value="payable">Payable</option></select></div><div><label>Category</label><input id="transactionCategory" required /></div><div><label>Amount</label><input type="number" id="transactionAmount" min="0" step="0.01" required /></div><div><label>Currency</label><select id="transactionCurrency" required><option value="TWD">NTD / TWD</option><option value="USD">USD</option><option value="SZL">E / SZL</option></select></div><div><label>Rate to NTD</label><input type="number" id="transactionRate" min="0" step="0.000001" value="1" required /></div><div><label>Payment Method</label><select id="transactionMethod"><option>Bank</option><option>Cash</option><option>Mobile Money</option><option>Card</option><option>Other</option></select></div><div><label>Reference / Receipt</label><input id="transactionReference" /></div><div><label>Proof Status</label><select id="transactionProof"><option value="not verified">Not Verified</option><option value="verified">Verified</option><option value="not needed">Not Needed</option></select></div><div><label>Optional Receipt / Proof Picture</label><input type="file" id="transactionProofFile" accept="image/*,.pdf" /></div><div><label>Attached Proof File</label><div id="transactionProofFileStatus" class="small">No file selected or attached.</div></div><div class="full"><label>Description</label><input id="transactionDescription" required /></div><div class="full"><label>Note</label><textarea id="transactionNote"></textarea></div><div class="full"><button type="submit">Save Transaction</button> <button type="button" class="secondary-btn" onclick="clearTransactionForm()">Clear</button></div></form><div class="filter-card"><h3>Search & Filters</h3><div class="form-grid"><div><label>Search description/category/reference</label><input id="txSearch" oninput="renderTables()" placeholder="Search transactions..." /></div><div><label>Filter Month</label><input type="month" id="txFilterMonth" onchange="renderTables()" /></div><div><label>Filter Type</label><select id="txFilterType" onchange="renderTables()"><option value="">All types</option><option value="income">Income</option><option value="expense">Expense</option><option value="savings">Savings</option><option value="investment">Investment Contribution</option><option value="debt">Debt Payment</option></select></div><div><label>Receipt Status</label><select id="txFilterProof" onchange="renderTables()"><option value="">All receipt statuses</option><option value="stored">Image/PDF stored</option><option value="metadata">Metadata only</option><option value="missing">No image/PDF</option></select></div><div><label>Review Status</label><select id="txFilterReview" onchange="renderTables()"><option value="">All review statuses</option><option value="complete">Complete</option><option value="missing-receipt">Missing receipt</option><option value="duplicate">Possible duplicate</option><option value="cloud-pending">Cloud pending</option><option value="needs-review">Needs review</option></select></div></div></div><div class="table-wrap"><table><thead><tr><th>Date / Receipt Proof</th><th>Review Status</th><th>Month</th><th>Type</th><th>Status</th><th>Category</th><th>Amount</th><th>NTD Amount</th><th>Method</th><th>Description</th><th>Actions</th></tr></thead><tbody id="transactionTable"></tbody></table></div></div></section>
+      <section id="budgets" class="section"><div class="card"><h2>Budgets</h2><form class="form-grid" onsubmit="saveBudget(event)"><input type="hidden" id="budgetId" /><div><label>Month</label><input type="month" id="budgetMonth" required /></div><div><label>Category</label><input id="budgetCategory" required /></div><div><label>Budget Amount NTD</label><input type="number" id="budgetAmount" min="0" step="0.01" required /></div><div><label>Materiality Limit</label><input type="number" id="budgetMateriality" min="0" step="0.01" value="0" /></div><div class="full"><label>Note</label><input id="budgetNote" /></div><div class="full"><button type="submit">Save Budget</button> <button type="button" class="secondary-btn" onclick="clearBudgetForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Month</th><th>Category</th><th>Budget</th><th>Actual Expense</th><th>Variance</th><th>Usage</th><th>Note</th><th>Actions</th></tr></thead><tbody id="budgetTable"></tbody></table></div></div></section>
+      <section id="assets" class="section"><div class="card"><h2>Assets</h2><form class="form-grid" onsubmit="saveAsset(event)"><input type="hidden" id="assetId" /><div><label>Date</label><input type="date" id="assetDate" required /></div><div><label>Asset Name</label><input id="assetName" required /></div><div><label>Category</label><input id="assetCategory" placeholder="Cash, Bank, Equipment..." required /></div><div><label>Historical Cost / Value NTD</label><input type="number" id="assetValue" min="0" step="0.01" required /></div><div><label>Proof Status</label><select id="assetProof"><option value="not verified">Not Verified</option><option value="verified">Verified</option></select></div><div class="full"><label>Note</label><input id="assetNote" /></div><div class="full"><button type="submit">Save Asset</button> <button type="button" class="secondary-btn" onclick="clearAssetForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Date</th><th>Name</th><th>Category</th><th>Value</th><th>Proof</th><th>Note</th><th>Actions</th></tr></thead><tbody id="assetTable"></tbody></table></div></div></section>
+      <section id="liabilities" class="section"><div class="card"><h2>Liabilities</h2><form class="form-grid" onsubmit="saveLiability(event)"><input type="hidden" id="liabilityId" /><div><label>Date</label><input type="date" id="liabilityDate" required /></div><div><label>Liability Name</label><input id="liabilityName" required /></div><div><label>Category</label><input id="liabilityCategory" placeholder="AP, Loan, Credit..." required /></div><div><label>Amount Owed NTD</label><input type="number" id="liabilityValue" min="0" step="0.01" required /></div><div><label>Due Date</label><input type="date" id="liabilityDue" /></div><div><label>Proof Status</label><select id="liabilityProof"><option value="not verified">Not Verified</option><option value="verified">Verified</option></select></div><div class="full"><label>Note</label><input id="liabilityNote" /></div><div class="full"><button type="submit">Save Liability</button> <button type="button" class="secondary-btn" onclick="clearLiabilityForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Date</th><th>Name</th><th>Category</th><th>Amount</th><th>Due</th><th>Proof</th><th>Note</th><th>Actions</th></tr></thead><tbody id="liabilityTable"></tbody></table></div></div></section>
+      <section id="investments" class="section"><div class="card"><h2>Investments</h2><form class="form-grid" onsubmit="saveInvestment(event)"><input type="hidden" id="investmentId" /><div><label>Date</label><input type="date" id="investmentDate" required /></div><div><label>Name</label><input id="investmentName" required /></div><div><label>Type</label><input id="investmentType" placeholder="ETF, CFD learning, savings..." required /></div><div><label>Cost NTD</label><input type="number" id="investmentCost" min="0" step="0.01" required /></div><div><label>Current Value NTD</label><input type="number" id="investmentValue" min="0" step="0.01" required /></div><div class="full"><label>Risk / Rule Note</label><input id="investmentNote" /></div><div class="full"><button type="submit">Save Investment</button> <button type="button" class="secondary-btn" onclick="clearInvestmentForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Date</th><th>Name</th><th>Type</th><th>Cost</th><th>Current Value</th><th>Gain/Loss</th><th>ROI</th><th>Note</th><th>Actions</th></tr></thead><tbody id="investmentTable"></tbody></table></div></div></section>
+      <section id="projects" class="section"><div class="card"><h2>Projects</h2><form class="form-grid" onsubmit="saveProject(event)"><input type="hidden" id="projectId" /><div><label>Name</label><input id="projectName" required /></div><div><label>Status</label><select id="projectStatus"><option>Planning</option><option>Active</option><option>Paused</option><option>Completed</option></select></div><div><label>Budget NTD</label><input type="number" id="projectBudget" min="0" step="0.01" value="0" /></div><div><label>Actual Cost NTD</label><input type="number" id="projectCost" min="0" step="0.01" value="0" /></div><div><label>Expected Return NTD</label><input type="number" id="projectReturn" min="0" step="0.01" value="0" /></div><div class="full"><label>Purpose / Notes</label><textarea id="projectNote"></textarea></div><div class="full"><button type="submit">Save Project</button> <button type="button" class="secondary-btn" onclick="clearProjectForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Name</th><th>Status</th><th>Budget</th><th>Actual Cost</th><th>Expected Return</th><th>Projected ROI</th><th>Note</th><th>Actions</th></tr></thead><tbody id="projectTable"></tbody></table></div></div></section>
+      <section id="notes" class="section"><div class="card"><h2>Notes & Disclosure</h2><form class="form-grid" onsubmit="saveNote(event)"><input type="hidden" id="noteId" /><div><label>Date</label><input type="date" id="noteDate" required /></div><div><label>Area</label><input id="noteArea" required /></div><div><label>Priority</label><select id="notePriority"><option>Normal</option><option>Important</option><option>Critical</option></select></div><div class="full"><label>Note</label><textarea id="noteText" required></textarea></div><div class="full"><button type="submit">Save Note</button> <button type="button" class="secondary-btn" onclick="clearNoteForm()">Clear</button></div></form><div class="table-wrap"><table><thead><tr><th>Date</th><th>Area</th><th>Priority</th><th>Note</th><th>Actions</th></tr></thead><tbody id="noteTable"></tbody></table></div></div></section>
+      <section id="ledger" class="section"><div class="card"><span class="module-badge">New in Test 10</span><h2>General Ledger / T-Ledger</h2><p class="muted">This recording module ledger shows account movements for Bank, Cash, Accounts Receivable, Accounts Payable, assets, liabilities, equity, income, and expenses. It shows date, transaction detail, debit, credit, running balance, balance b/d, and balance c/d. Account balances clearly show positive or negative status.</p><div id="ledgerSummary" class="grid"></div></div><div class="card"><h2>Manual Ledger Entry / Correction</h2><p class="muted">Use this only to record a ledger opening balance or correction. Normal business activity should still be entered through the customer forms such as Transactions, Assets, Liabilities, Investments, and Budgets.</p><form class="form-grid" onsubmit="saveLedgerEntry(event)"><input type="hidden" id="ledgerId" /><div><label>Date</label><input type="date" id="ledgerDate" required /></div><div><label>Accounting Month</label><input type="month" id="ledgerMonth" required /></div><div><label>Account</label><select id="ledgerAccount" required></select></div><div><label>Custom Account Name</label><input id="ledgerCustomAccount" placeholder="Use only if account is not in list" /></div><div><label>Account Type</label><select id="ledgerAccountType"><option value="asset">Asset</option><option value="liability">Liability</option><option value="equity">Equity</option><option value="income">Income</option><option value="expense">Expense</option></select></div><div><label>Debit NTD</label><input type="number" id="ledgerDebit" min="0" step="0.01" value="0" /></div><div><label>Credit NTD</label><input type="number" id="ledgerCredit" min="0" step="0.01" value="0" /></div><div><label>Source</label><select id="ledgerSource"><option>manual opening balance</option><option>manual correction</option><option>reclassification</option><option>other</option></select></div><div class="full"><label>Transaction Detail</label><input id="ledgerDetail" required /></div><div class="full"><button type="submit">Save Ledger Entry</button> <button type="button" class="secondary-btn" onclick="clearLedgerForm()">Clear</button></div></form></div><div class="card"><h2>Account Ledger View</h2><div class="form-grid"><div><label>Select Account</label><select id="ledgerViewAccount" onchange="renderLedger()"></select></div><div><label>Filter Month</label><input type="month" id="ledgerFilterMonth" onchange="renderLedger()" /></div><div><label>View</label><select id="ledgerViewMode" onchange="renderLedger()"><option value="all">All entries</option><option value="manual">Manual entries only</option><option value="automatic">Automatic postings only</option></select></div><div><label>Actions</label><button type="button" onclick="exportLedgerCsv()">Export Ledger CSV</button></div></div><div id="selectedLedgerStatus" class="alert"></div><div class="table-wrap"><table><thead><tr><th>Date</th><th>Month</th><th>Source</th><th>Transaction Detail</th><th>Debit</th><th>Credit</th><th>Running Balance</th><th>Balance b/d</th><th>Balance c/d</th><th>Status</th><th>Actions</th></tr></thead><tbody id="ledgerTable"></tbody></table></div><div class="ledger-taccount"><div class="ledger-side"><h3>Debit Side</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Details</th><th>Amount</th></tr></thead><tbody id="ledgerDebitSide"></tbody></table></div></div><div class="ledger-side"><h3>Credit Side</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th>Details</th><th>Amount</th></tr></thead><tbody id="ledgerCreditSide"></tbody></table></div></div></div></div></section>
+      <section id="statements" class="section"><div class="card"><h2>Financial Statements</h2><div class="form-grid"><div><label>Accounting Month</label><input type="month" id="statementMonth" onchange="renderStatements()" /></div><div><label>Filter Category</label><input id="statementCategoryFilter" oninput="renderStatements()" placeholder="Optional" /></div></div><div id="statementSummary" class="grid"></div></div><div class="card"><h2>Income Statement</h2><div class="table-wrap"><table><thead><tr><th>Line</th><th>Amount NTD</th></tr></thead><tbody id="incomeStatementTable"></tbody></table></div></div><div class="card"><h2>Statement of Financial Position</h2><div class="table-wrap"><table><thead><tr><th>Line</th><th>Amount NTD</th></tr></thead><tbody id="positionStatementTable"></tbody></table></div></div></section>
+      <section id="cloud" class="section"><div class="card cloud-panel"><span class="module-badge">Cloud & Backup Readiness</span><h2>Cloud Status Dashboard</h2><p class="muted">This section is now a simple checklist. It does not contain the Save to Cloud or Load from Cloud buttons. Those buttons are placed beside Export JSON and Import JSON at the top of the app.</p><div id="cloudReadinessDashboard" class="grid"></div><div id="easyActivationChecklist" class="alert"></div><div class="small-actions" style="margin-top:12px"><button onclick="runEasyActivationCheck()">Refresh Checklist</button><button onclick="cloudRegisterOrLogin()">Cloud Register / Login</button><button class="secondary-btn" onclick="runCloudLoginReadiness()">Check Login Status</button><button class="secondary-btn" onclick="runSchemaChecker()">Check Cloud Tables</button><button class="secondary-btn" onclick="runReceiptStorageCheck()">Check Receipt Storage</button><button class="secondary-btn" onclick="downloadSupabaseSql()">Download Supabase Setup SQL</button><button class="secondary-btn" onclick="showSupabaseActivationSteps()">Show Setup Steps</button></div><div id="cloudVerificationResults" class="alert"></div></div><div class="card"><h2>Cloud Login Details</h2><p class="muted">Use this only to sign in or register the current cloud account. Saving and loading are now part of the main backup buttons at the top.</p><div class="form-grid"><div><label>Cloud Username</label><input id="cloudLoginUsername" /></div><div><label>Cloud PIN / Password</label><input type="password" id="cloudLoginPin" /></div></div><div class="alert warning"><strong>Reminder:</strong> Export JSON before major cloud tests. After successful cloud login, ProfitPilot automatically loads the latest cloud profile/records. Manual Load from Cloud at the top remains a backup action and still asks for confirmation. For safety, the app logs out automatically after 3 minutes of inactivity.</div></div><div class="card"><h2>Supabase Setup Reference</h2><p class="muted">For setup only. Search for <strong>PROFITPILOT_SUPABASE_CONFIG</strong> in this HTML file and paste only your Project URL and Publishable/anon key.</p><div class="code-box">window.PROFITPILOT_SUPABASE_CONFIG = { projectUrl: "", publishableKey: "", mode: "test10-final-recording-module-all-10-improvements", receiptBucket: "profitpilot-receipts" };</div></div><div class="card"><h2>Cloud Backup Preview</h2><button class="secondary-btn" onclick="previewCloudBackup()">Preview Cloud Backup</button><div id="cloudBackupPreview" class="alert"></div></div><div class="card"><h2>Cloud Version History</h2><div class="table-wrap"><table><thead><tr><th>Date</th><th>Name</th><th>Profile</th><th>Records</th><th>Actions</th></tr></thead><tbody id="cloudHistoryTable"></tbody></table></div></div></section>
+      <section id="review" class="section"><div class="card"><span class="module-badge">Cleaner user review tool</span><h2>Review & Error Center</h2><p class="muted">This center shows only useful problems and warnings instead of a technical log page. It checks save status, missing receipt/proof files, possible duplicate records, negative ledger balances, and cloud-sync issues.</p><div id="reviewOverview" class="grid"></div></div><div class="card"><h2>Problems & Warnings</h2><div class="small-actions"><button onclick="runIntegrityCheck(); renderReviewCenter();">Run Full Review Check</button><button class="secondary-btn" onclick="exportIntegrityReport()">Export Review Report</button></div><div id="reviewSummary" class="alert"></div><div class="table-wrap"><table><thead><tr><th>Level</th><th>Area</th><th>Problem / Warning</th><th>Suggested Action</th></tr></thead><tbody id="reviewTable"></tbody></table></div></div><div class="card"><h2>Save & Cloud Status</h2><div id="reviewCloudStatus" class="alert"></div></div><div class="card"><h2>Hidden Technical Logs</h2><p class="muted">Technical logs are kept hidden inside the data only for debugging and cloud troubleshooting. They are not shown as a main user-facing fixture.</p></div></section>
+
+      <section id="help" class="section"><div class="card"><span class="module-badge">Built-in user manual</span><h2>Help / How to Use the Recording Module</h2><p class="muted">This guide explains the main customer actions in simple language. The app still keeps technical logs hidden and shows user-facing issues through the Review & Error Center.</p><div class="manual-list"><p><strong>1. Record income or expense:</strong> Open Transactions, enter the date, accounting month, type, amount, rate, method, description, and save.</p><p><strong>2. Attach receipt/proof:</strong> Use Optional Receipt / Proof Picture when a transaction needs evidence. Cloud users can store files in Supabase Storage; local-only users save metadata only.</p><p><strong>3. Check the ledger:</strong> Open General Ledger to see Bank, Cash, AR, AP, income, expense, asset, liability, and equity movements with debit, credit, balance b/d, and balance c/d.</p><p><strong>4. Read warnings:</strong> Open Review & Error Center to see missing receipts, possible duplicates, negative balances, pending saves, and cloud-sync issues.</p><p><strong>5. Save and backup:</strong> Use Save to Cloud for Supabase and Export JSON for emergency backup. Auto-save runs 30 seconds after record changes when cloud is active.</p><p><strong>6. Monthly closing:</strong> Use the Monthly Closing Checklist before moving a month into the next Organising Module.</p><p><strong>7. Security:</strong> The app warns before auto logout, attempts a safe save if needed, then logs out after inactivity without deleting records.</p></div></div></section>
+    </main>
+  </div>
+  <div id="changePinModal" class="modal"><div class="modal-card"><h2>Change PIN / Password</h2><div class="form-grid"><div class="full"><label>Current PIN</label><input type="password" id="currentPin" /></div><div class="full"><label>New PIN</label><input type="password" id="newPin" /></div><div class="full"><label>Confirm New PIN</label><input type="password" id="confirmNewPin" /></div></div><br /><button onclick="changePin()">Save Changes</button> <button class="secondary-btn" onclick="closeChangePin()">Cancel</button></div></div>
+
+  <div id="logoutCountdownToast" class="countdown-toast"><strong>Inactivity warning</strong><br><span id="logoutCountdownText">You will be logged out soon.</span><div class="small-actions" style="margin-top:10px"><button onclick="stayLoggedIn()">Stay Logged In</button><button class="secondary-btn" onclick="performLogout('User chose logout from inactivity warning')">Logout Now</button></div></div>
+  <script>
+    /* ================= EASY SUPABASE ACTIVATION CONFIG ================= */
+    window.PROFITPILOT_SUPABASE_CONFIG = {
+      projectUrl: "",
+      publishableKey: "",
+      mode: "test10-final-recording-module-all-10-improvements",
+      receiptBucket: "profitpilot-receipts"
+    };
+
+    const VERSION = "ProfitPilot Test 10 Final Recording Module - All 10 Final Improvements";
+    const STORE_KEY = "profitpilot_test10_final_recording_module_store";
+    const BACKUP_KEY = "profitpilot_test10_last_backup_at";
+    const REPORT_KEY = "profitpilot_test10_integrity_report";
+    const CLOUD_HISTORY_KEY = "profitpilot_test10_cloud_history";
+    const CLOUD_TABLES = { profiles:"profitpilot_profiles", records:"profitpilot_records", versions:"profitpilot_cloud_versions", audit:"profitpilot_audit_logs" };
+    let store = loadStore();
+    let activeProfileId = store.activeProfileId || null;
+    let incomeExpenseChart = null;
+    let balanceChart = null;
+    let autoLockTimer = null;
+    let autoLogoutListenersReady = false;
+    let autoLogoutLastActivity = Date.now();
+    const AUTO_LOGOUT_DELAY_MS = 1000 * 60 * 3;
+    let autoLogoutLastResult = "Auto logout is active: 3 minutes of inactivity.";
+    let profitPilotSupabaseClient = null;
+    let saveLock = false;
+    let unsavedCloudChanges = false;
+    const AUTO_CLOUD_SAVE_DELAY_MS = 30000;
+    let autoCloudSaveTimer = null;
+    let autoCloudSaveDueAt = null;
+    let autoCloudSaveReason = "";
+    let autoCloudSaveLastResult = "No automatic cloud save has run yet.";
+    let autoCloudLoadLastResult = "Automatic cloud load has not run yet.";
+    let autoCloudLoadEnabled = true;
+    const tabs = [["dashboard","Dashboard"],["transactions","Transactions"],["budgets","Budgets"],["assets","Assets"],["liabilities","Liabilities"],["investments","Investments"],["projects","Projects"],["notes","Notes"],["ledger","General Ledger"],["statements","Statements"],["cloud","Cloud Readiness"],["review","Review & Error Center"],["help","Help / Manual"]];
+    const STANDARD_ACCOUNTS = [
+      {name:"Bank", type:"asset"},{name:"Cash", type:"asset"},{name:"Accounts Receivable", type:"asset"},{name:"Inventory", type:"asset"},{name:"Equipment", type:"asset"},{name:"Investments", type:"asset"},{name:"Other Assets", type:"asset"},
+      {name:"Accounts Payable", type:"liability"},{name:"Loans Payable", type:"liability"},{name:"Other Liabilities", type:"liability"},
+      {name:"Owner Capital", type:"equity"},{name:"Drawings", type:"equity"},{name:"Retained Earnings", type:"equity"},
+      {name:"Sales Revenue", type:"income"},{name:"Service Income", type:"income"},{name:"Other Income", type:"income"},
+      {name:"Rent Expense", type:"expense"},{name:"Transport Expense", type:"expense"},{name:"Utilities Expense", type:"expense"},{name:"Salaries/Wages Expense", type:"expense"},{name:"Supplies Expense", type:"expense"},{name:"Other Expenses", type:"expense"}
+    ];
+
+    function $(id){ return document.getElementById(id); }
+    function money(n){ return "NT$ " + Number(n || 0).toLocaleString(undefined,{maximumFractionDigits:2}); }
+    function pct(n){ return Number(n || 0).toFixed(2) + "%"; }
+    function makeId(){ return window.crypto && crypto.randomUUID ? crypto.randomUUID() : "id_" + Date.now() + Math.random().toString(16).slice(2); }
+    function nowIso(){ return new Date().toISOString(); }
+    function today(){ return new Date().toISOString().slice(0,10); }
+    function thisMonth(){ return new Date().toISOString().slice(0,7); }
+    function parse(n){ return Number(n || 0); }
+    function escapeHtml(s){ return String(s ?? "").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c])); }
+    function downloadText(filename, text, type="text/plain"){ const blob = new Blob([text], {type}); const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=filename; a.click(); URL.revokeObjectURL(a.href); }
+
+    function defaultStore(){ return {version:VERSION, activeProfileId:null, profiles:[], audit:[], rateDisclosures:[], createdAt:nowIso(), updatedAt:nowIso(), lastCloudSaveAt:null, lastCloudBackupName:""}; }
+    function loadStore(){ try{ const data=JSON.parse(localStorage.getItem(STORE_KEY)); if(data && Array.isArray(data.profiles)) return migrateStore(data); }catch(e){} return defaultStore(); }
+    function migrateStore(s){
+      s.version = VERSION; s.profiles = Array.isArray(s.profiles) ? s.profiles : []; s.audit = Array.isArray(s.audit) ? s.audit : []; s.rateDisclosures = Array.isArray(s.rateDisclosures) ? s.rateDisclosures : [];
+      s.createdAt = s.createdAt || nowIso(); s.updatedAt = s.updatedAt || nowIso(); s.lastCloudSaveAt = s.lastCloudSaveAt || null;
+      s.profiles.forEach(p=>{ collectionNames().forEach(k=>p[k]=Array.isArray(p[k])?p[k]:[]); p.ledgerEntries=Array.isArray(p.ledgerEntries)?p.ledgerEntries:[]; p.receiptRetryQueue=Array.isArray(p.receiptRetryQueue)?p.receiptRetryQueue:[]; p.monthlyClosing=Array.isArray(p.monthlyClosing)?p.monthlyClosing:[]; p.transactions.forEach(t=>{ if(t.proofAttachment && typeof t.proofAttachment!=="object") t.proofAttachment=null; }); p.ledgerSettings=p.ledgerSettings||{createdBy:VERSION,createdAt:nowIso()}; p.recoveryQuestion=p.recoveryQuestion||""; p.recoveryAnswer=p.recoveryAnswer||""; p.profileKey=p.profileKey||p.id||makeId(); p.createdAt=p.createdAt||nowIso(); p.updatedAt=p.updatedAt||nowIso(); });
+      return s;
+    }
+    function saveStore(){ store.updatedAt=nowIso(); store.activeProfileId=activeProfileId; localStorage.setItem(STORE_KEY, JSON.stringify(store)); markLocalChange(); }
+    function currentProfile(){ return store.profiles.find(p=>p.id===activeProfileId)||null; }
+    function collectionNames(){ return ["transactions","budgets","assets","liabilities","investments","projects","notes"]; }
+    function emptyProfile(username,password,currency,q,a){ return {id:makeId(), profileKey:makeId(), username, password, defaultCurrency:currency||"TWD", recoveryQuestion:q||"", recoveryAnswer:(a||"").trim().toLowerCase(), transactions:[], budgets:[], assets:[], liabilities:[], investments:[], projects:[], notes:[], ledgerEntries:[], receiptRetryQueue:[], monthlyClosing:[], ledgerSettings:{createdBy:VERSION,createdAt:nowIso()}, cloudSource:"supabase-ready", createdAt:nowIso(), updatedAt:nowIso(), lastCloudSaveAt:null}; }
+    function addAudit(action, details){ store.audit.unshift({id:makeId(), date:nowIso(), action, details}); store.audit=store.audit.slice(0,600); localStorage.setItem(STORE_KEY, JSON.stringify(store)); renderAudit(); }
+    function markLocalChange(){ unsavedCloudChanges = true; renderCloudStatus(); }
+    function markCloudSaved(){ unsavedCloudChanges = false; autoCloudSaveDueAt = null; autoCloudSaveReason = ""; store.lastCloudSaveAt=nowIso(); const p=currentProfile(); if(p) p.lastCloudSaveAt=store.lastCloudSaveAt; localStorage.setItem(STORE_KEY, JSON.stringify(store)); renderCloudStatus(); }
+
+    function scheduleAutoCloudSave(reason){
+      autoCloudSaveReason = reason || "record change";
+      autoCloudSaveDueAt = new Date(Date.now()+AUTO_CLOUD_SAVE_DELAY_MS).toISOString();
+      if(autoCloudSaveTimer) clearTimeout(autoCloudSaveTimer);
+      autoCloudSaveTimer = setTimeout(runAutoCloudSave, AUTO_CLOUD_SAVE_DELAY_MS);
+      renderCloudStatus();
+    }
+    async function runAutoCloudSave(){
+      autoCloudSaveTimer = null;
+      const c = getSupabaseClient();
+      if(!c){ autoCloudSaveLastResult = "Auto save skipped: Supabase is not configured."; renderCloudStatus(); return; }
+      const user = await getSupabaseUser();
+      if(!user){ autoCloudSaveLastResult = "Auto save paused: sign in to Supabase cloud first."; renderCloudStatus(); return; }
+      if(saveLock){
+        autoCloudSaveLastResult = "Auto save delayed: another cloud save is running.";
+        scheduleAutoCloudSave(autoCloudSaveReason || "delayed record change");
+        return;
+      }
+      try{
+        autoCloudSaveLastResult = "Auto save running...";
+        renderCloudStatus();
+        await saveActiveProfileToSupabase(true, "auto-save-30-seconds");
+        autoCloudSaveLastResult = "Auto saved to cloud at "+new Date().toLocaleString()+" after "+(autoCloudSaveReason||"record change")+".";
+        autoCloudSaveDueAt = null;
+        autoCloudSaveReason = "";
+        renderCloudStatus();
+      }catch(e){
+        autoCloudSaveLastResult = "Auto save failed: "+explainError(e);
+        renderCloudStatus();
+      }
+    }
+
+    function showAuthError(msg){ $("authError").textContent=msg; $("authError").classList.add("show"); }
+    function clearAuthError(){ $("authError").textContent=""; $("authError").classList.remove("show"); }
+    function showRegister(){ clearAuthError(); $("loginBox").classList.add("hidden"); $("recoveryBox").classList.add("hidden"); $("registerBox").classList.remove("hidden"); }
+    function showLogin(){ clearAuthError(); $("registerBox").classList.add("hidden"); $("recoveryBox").classList.add("hidden"); $("loginBox").classList.remove("hidden"); }
+    function showRecovery(){ clearAuthError(); $("registerBox").classList.add("hidden"); $("loginBox").classList.add("hidden"); $("recoveryBox").classList.remove("hidden"); }
+
+    async function registerAccount(){
+      clearAuthError(); const u=$("regUsername").value.trim(), pin=$("regPassword").value, c=$("regConfirmPassword").value, q=$("regRecoveryQuestion").value.trim(), a=$("regRecoveryAnswer").value.trim();
+      if(!u||!pin) return showAuthError("Username and PIN are required."); if(pin!==c) return showAuthError("PIN confirmation does not match.");
+      const client = getSupabaseClient();
+      if(client){ const email=usernameToCloudEmail(u); const signUp=await client.auth.signUp({email,password:pin,options:{data:{profitpilot_username:u}}}); if(signUp.error && !String(signUp.error.message).toLowerCase().includes("already")) return showAuthError("Cloud registration failed: "+signUp.error.message); const signIn=await client.auth.signInWithPassword({email,password:pin}); if(signIn.error) return showAuthError("Cloud sign-in failed. Disable email confirmation for testing or check credentials. "+signIn.error.message); }
+      const prof=emptyProfile(u,pin,$("regCurrency").value,q,a); store.profiles=[prof]; activeProfileId=prof.id; store.activeProfileId=prof.id; saveStore(); addAudit("Register","New empty Test 10 Recording Module profile created."); openApp(); if(client) await saveActiveProfileToSupabase(true);
+    }
+    async function login(){
+      clearAuthError(); const u=$("loginUsername").value.trim(), pin=$("loginPassword").value; if(!u||!pin) return showAuthError("Username and PIN are required.");
+      const client=getSupabaseClient();
+      if(client){
+        const signIn=await client.auth.signInWithPassword({email:usernameToCloudEmail(u),password:pin});
+        if(signIn.error) return showAuthError("Cloud login failed: "+signIn.error.message);
+        const ok=await autoLoadCloudAfterLogin(u,false,"main login");
+        if(ok){ addAudit("Cloud Login","Signed in and automatically loaded latest Supabase cloud data."); openApp(); return; }
+        autoCloudLoadLastResult = "Cloud login succeeded, but no cloud profile was found. Local emergency cache will be checked.";
+      }
+      const p=store.profiles.find(x=>String(x.username).toLowerCase()===u.toLowerCase() && x.password===pin); if(!p) return showAuthError("Local cache login failed. If using cloud, check Supabase config, credentials, and cloud table setup."); activeProfileId=p.id; saveStore(); addAudit("Local Login","Signed in using local emergency cache."); openApp();
+    }
+    async function logout(){
+      if(!confirm("Logout now? Your records will not be deleted. Export JSON first if you have important unsaved emergency data.")) return;
+      await performLogout("Manual logout");
+    }
+    async function performLogout(reason){
+      clearTimeout(autoLockTimer);
+      autoCloudSaveDueAt = null;
+      autoCloudSaveReason = "";
+      if(autoCloudSaveTimer) clearTimeout(autoCloudSaveTimer);
+      const client = getSupabaseClient();
+      try{ if(client) await client.auth.signOut(); }catch(e){ console.warn("Cloud sign-out warning:", e); }
+      activeProfileId=null;
+      store.activeProfileId=null;
+      saveStore();
+      autoLogoutLastResult = `${reason || "Logout completed"} at ${new Date().toLocaleTimeString()}. No local/cache data or cloud records were deleted.`;
+      $("app").classList.add("hidden");
+      $("authScreen").classList.remove("hidden");
+      showLogin();
+    }
+    function lockApp(){ $("app").classList.add("hidden"); $("authScreen").classList.remove("hidden"); showLogin(); addAudit("Lock","App locked manually."); }
+    function showRecoveryQuestion(){ const u=$("recoveryUsername").value.trim().toLowerCase(); const p=store.profiles.find(x=>String(x.username).toLowerCase()===u); $("recoveryQuestionDisplay").innerHTML = p ? "Saved question: <strong>"+escapeHtml(p.recoveryQuestion||"No question saved")+"</strong>" : "No local recovery profile found for this username."; }
+    function resetPinWithRecovery(){ const u=$("recoveryUsername").value.trim().toLowerCase(); const p=store.profiles.find(x=>String(x.username).toLowerCase()===u); if(!p) return showAuthError("No local profile found."); if(String($("recoveryAnswerInput").value).trim().toLowerCase() !== String(p.recoveryAnswer||"").trim().toLowerCase()) return showAuthError("Recovery answer does not match local cache."); const n=$("recoveryNewPin").value,c=$("recoveryConfirmPin").value; if(!n||n!==c) return showAuthError("New PIN confirmation does not match."); p.password=n; p.updatedAt=nowIso(); saveStore(); addAudit("Local PIN Reset","Emergency local PIN reset completed. Supabase Auth password may still need cloud reset."); alert("Local emergency PIN reset completed. If this profile uses Supabase, reset Supabase Auth password separately when needed."); showLogin(); }
+    function openChangePin(){ $("changePinModal").classList.add("show"); }
+    function closeChangePin(){ $("changePinModal").classList.remove("show"); }
+    async function changePin(){ const p=currentProfile(); if(!p) return; if($("currentPin").value!==p.password && p.password!=="supabase-auth") return alert("Current PIN is incorrect for local profile."); const n=$("newPin").value,c=$("confirmNewPin").value; if(!n||n!==c) return alert("New PIN confirmation does not match."); p.password=n; p.updatedAt=nowIso(); saveStore(); const client=getSupabaseClient(); if(client){ const r=await client.auth.updateUser({password:n}); if(r.error) alert("Local PIN changed, but Supabase Auth password update failed: "+r.error.message); } addAudit("Change PIN","PIN/password changed for active profile."); closeChangePin(); alert("PIN/password update completed."); }
+
+    function renderTabs(){ const nav=$("tabs"); nav.innerHTML=tabs.map((t,i)=>`<button class="${i===0?'active':''}" onclick="switchTab('${t[0]}',this)">${escapeHtml(t[1])}</button>`).join(""); }
+    function switchTab(id,btn){ document.querySelectorAll(".section").forEach(s=>s.classList.remove("active")); $(id).classList.add("active"); document.querySelectorAll("nav button").forEach(b=>b.classList.remove("active")); if(btn) btn.classList.add("active"); renderAll(); }
+    function setDefaultDates(){ ["transactionDate","assetDate","liabilityDate","investmentDate","noteDate","ledgerDate","manualRateDate"].forEach(id=>{ if($(id) && !$(id).value) $(id).value=today(); }); ["transactionMonth","budgetMonth","statementMonth","ledgerMonth"].forEach(id=>{ if($(id) && !$(id).value) $(id).value=thisMonth(); }); }
+    function openApp(){ $("authScreen").classList.add("hidden"); $("app").classList.remove("hidden"); setDefaultDates(); populateLedgerAccountSelects(); startAutoLogoutTimer(); renderAll(); }
+    function startAutoLogoutTimer(){
+      autoLogoutLastActivity = Date.now();
+      resetAutoLogoutTimer();
+      if(!autoLogoutListenersReady){
+        ["click","keydown","mousemove","touchstart","scroll"].forEach(ev=>{
+          document.addEventListener(ev,()=>{
+            if(!activeProfileId || $("app").classList.contains("hidden")) return;
+            autoLogoutLastActivity = Date.now();
+            resetAutoLogoutTimer();
+          },{passive:true});
+        });
+        autoLogoutListenersReady = true;
+      }
+    }
+    function resetAutoLogoutTimer(){
+      clearTimeout(autoLockTimer);
+      if(!activeProfileId) return;
+      autoLockTimer = setTimeout(async ()=>{
+        if(!activeProfileId || $("app").classList.contains("hidden")) return;
+        await performLogout("Automatic logout after 3 minutes of inactivity");
+        alert("ProfitPilot logged out automatically after 3 minutes of inactivity. Your records were not deleted.");
+      }, AUTO_LOGOUT_DELAY_MS);
+    }
+
+    function totals(){ const p=currentProfile(); if(!p) return {income:0,expenses:0,assets:0,liabilities:0,investments:0,netWorth:0,cashRunway:0}; const income=p.transactions.filter(t=>t.type==="income").reduce((a,t)=>a+parse(t.ntdAmount),0); const expenses=p.transactions.filter(t=>t.type==="expense").reduce((a,t)=>a+parse(t.ntdAmount),0); const assets=p.assets.reduce((a,x)=>a+parse(x.value),0)+p.investments.reduce((a,x)=>a+parse(x.currentValue),0); const liabilities=p.liabilities.reduce((a,x)=>a+parse(x.value),0); const investments=p.investments.reduce((a,x)=>a+parse(x.currentValue),0); return {income,expenses,assets,liabilities,investments,netWorth:assets-liabilities,cashRunway:expenses?assets/(expenses/Math.max(1,new Set(p.transactions.filter(t=>t.type==="expense").map(t=>t.month)).size)):0}; }
+    function renderDashboard(){ const p=currentProfile(); if(!p) return; const t=totals(); $("activeProfileText").textContent=`${VERSION} | ${p.username}`; $("appStatus").innerHTML=`<strong>Active profile:</strong> ${escapeHtml(p.username)}<br><strong>Module:</strong> Recording Module. Later modules: Organising, Analysing, Advising.<br><strong>Records:</strong> ${collectionNames().reduce((a,k)=>a+(p[k]||[]).length,0)} customer-entered records + ${(p.ledgerEntries||[]).length} manual ledger entries.`; renderCloudStatus(); renderBackupStatus(); $("metricsGrid").innerHTML=[ ["Income",t.income],["Expenses",t.expenses],["Assets",t.assets],["Liabilities",t.liabilities],["Investments",t.investments],["Net Worth",t.netWorth] ].map(x=>`<div class="metric-card"><p>${x[0]}</p><h3>${money(x[1])}</h3></div>`).join(""); $("profileIdentity").innerHTML=`<strong>Profile key:</strong> ${escapeHtml(p.profileKey)}<br><strong>Default currency:</strong> ${escapeHtml(p.defaultCurrency)}<br><strong>Last cloud save:</strong> ${escapeHtml(p.lastCloudSaveAt||"Not saved yet")}`; $("profileList").innerHTML=store.profiles.map(x=>`<div class="metric-card"><p>${escapeHtml(x.username)}</p><h3>${x.id===activeProfileId?'Active':'Profile'}</h3><button onclick="switchProfile('${x.id}')">Open</button></div>`).join(""); renderCompleteness(); renderClosingChecklist(); renderProjectDashboard(); renderChartsSafe(); }
+    function switchProfile(id){ if(unsavedCloudChanges && !confirm("You may have unsaved cloud changes. Switch profile anyway?")) return; activeProfileId=id; saveStore(); renderAll(); }
+    function renderBackupStatus(){ const last=localStorage.getItem(BACKUP_KEY)||"No JSON backup exported yet."; $("backupStatus").innerHTML=`<strong>Emergency JSON backup:</strong> ${escapeHtml(last)}<br>Export JSON before major cloud tests or before loading cloud data.`; }
+    function renderCloudStatus(){ const p=currentProfile(); const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; const configured=Boolean(cfg.projectUrl&&cfg.publishableKey); const due=autoCloudSaveDueAt?new Date(autoCloudSaveDueAt).toLocaleTimeString():"Not queued"; if($("cloudStatus")) $("cloudStatus").className="alert "+(configured? (unsavedCloudChanges?"warning":"good") : "warning"), $("cloudStatus").innerHTML=`<strong>Cloud:</strong> ${configured?'Supabase values present':'Supabase not configured'}<br><strong>Unsaved cloud changes:</strong> ${unsavedCloudChanges?'Yes':'No'}<br><strong>Auto cloud save:</strong> ${autoCloudSaveDueAt?'Queued for '+escapeHtml(due)+' after '+escapeHtml(autoCloudSaveReason):'Not queued'}<br><strong>Auto save result:</strong> ${escapeHtml(autoCloudSaveLastResult)}<br><strong>Auto cloud load:</strong> ${escapeHtml(autoCloudLoadLastResult)}<br><strong>Last cloud save:</strong> ${escapeHtml((p&&p.lastCloudSaveAt)||store.lastCloudSaveAt||"Not saved yet")}`; renderCloudReadinessDashboard(); }
+    function readinessCard(title, ok, detail){ return `<div class="metric-card"><p>${ok?'✅':'⚠️'} ${escapeHtml(title)}</p><h3 style="font-size:18px">${ok?'Ready':'Needs Check'}</h3><span class="pill ${ok?'good':'warn'}">${ok?'OK':'Action needed'}</span><p class="muted" style="margin-top:10px;font-weight:600;">${escapeHtml(detail)}</p></div>`; }
+    function renderCloudReadinessDashboard(){ if(!$("cloudReadinessDashboard")) return; const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; const configured=Boolean(cfg.projectUrl&&cfg.publishableKey); const p=currentProfile(); const cards=[ readinessCard("Supabase connection", configured, configured?"Project URL and publishable key are present.":"Paste Project URL and publishable key in the config block."), readinessCard("Receipt storage bucket", Boolean(cfg.receiptBucket), cfg.receiptBucket?"Receipt/proof bucket name is available.":"Add a receipt bucket name before using proof uploads."), readinessCard("Browser online", navigator.onLine, navigator.onLine?"Internet connection detected.":"You appear offline; cloud actions may pause."), readinessCard("Cloud save status", !unsavedCloudChanges, unsavedCloudChanges?"There are changes waiting for cloud save.":"No unsaved cloud changes detected."), readinessCard("Auto-load after login", autoCloudLoadEnabled, autoCloudLoadEnabled?"On: ProfitPilot loads the latest cloud data after successful cloud login.":"Off: automatic cloud loading is disabled."), readinessCard("Latest auto-load result", !!autoCloudLoadLastResult, autoCloudLoadLastResult), readinessCard("Auto logout protection", true, "On: logs out after 3 minutes of inactivity without deleting records."), readinessCard("Latest auto logout", true, autoLogoutLastResult), readinessCard("Auto-save queue", !autoCloudSaveDueAt, autoCloudSaveDueAt?"Auto-save queued for "+new Date(autoCloudSaveDueAt).toLocaleTimeString()+".":"No auto-save currently waiting."), readinessCard("Last cloud save", Boolean((p&&p.lastCloudSaveAt)||store.lastCloudSaveAt), ((p&&p.lastCloudSaveAt)||store.lastCloudSaveAt)||"Not saved to cloud yet."), readinessCard("JSON emergency backup", Boolean(localStorage.getItem(BACKUP_KEY)), localStorage.getItem(BACKUP_KEY)||"No recent JSON backup time recorded."), readinessCard("Receipt proof records", !!p, p?`${p.transactions.filter(t=>t.proofAttachment).length} transaction(s) have proof metadata.`:"Login to view profile proof status.") ]; $("cloudReadinessDashboard").innerHTML=cards.join(""); }
+    function clearTransactionForm(){ clearForm(["transactionId","transactionCategory","transactionAmount","transactionReference","transactionDescription","transactionNote"]); $("transactionRate").value=1; if($("transactionProofFile")) $("transactionProofFile").value=""; renderTransactionProofFileStatus(null); }
+    function editTransaction(id){ const x=currentProfile().transactions.find(r=>r.id===id); if(!x) return; ["Id","Date","Month","Type","Status","Category","Amount","Currency","Rate","Method","Reference","Proof","Description","Note"].forEach(k=>{ const el=$("transaction"+k); if(el) el.value=x[k.charAt(0).toLowerCase()+k.slice(1)]??""; }); renderTransactionProofFileStatus(x.proofAttachment||null); switchTab("transactions",document.querySelector('nav button:nth-child(2)')); }
+
+    function safeFileName(name){ return String(name||"proof").replace(/[^a-zA-Z0-9._-]/g,"_").slice(0,120); }
+    function proofBucketName(){ const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; return cfg.receiptBucket || "profitpilot-receipts"; }
+    function proofAttachmentLabel(a){ if(!a) return "No proof file"; const status=a.status||"metadata only"; return `${a.fileName||"proof file"} (${status})`; }
+    function renderTransactionProofFileStatus(a){ if(!$("transactionProofFileStatus")) return; $("transactionProofFileStatus").innerHTML = a ? `${escapeHtml(proofAttachmentLabel(a))}<br><span class="muted">${escapeHtml(a.storagePath?"Stored in Supabase Storage path: "+a.storagePath:"Metadata only. Sign in to Supabase and attach again to store the file itself.")}</span>` : "No file selected or attached."; }
+    async function processTransactionProofFile(transactionId, existingAttachment){
+      const input=$("transactionProofFile");
+      const file=input && input.files && input.files[0] ? input.files[0] : null;
+      if(!file) return existingAttachment || null;
+      const maxBytes=5*1024*1024;
+      if(file.size>maxBytes){ alert("Proof file is too large. Maximum allowed size is 5MB for this Test 10 fixture."); return existingAttachment || null; }
+      const isAllowed = String(file.type||"").startsWith("image/") || String(file.name||"").toLowerCase().endsWith(".pdf");
+      if(!isAllowed){ alert("Please attach an image file or PDF receipt/proof only."); return existingAttachment || null; }
+      const baseMeta={fileName:file.name,fileType:file.type||"application/octet-stream",fileSize:file.size,attachedAt:nowIso(),transactionId,status:"metadata only",storageProvider:"none",storageBucket:null,storagePath:null};
+      const c=getSupabaseClient(); const user=await getSupabaseUser(); const prof=currentProfile();
+      if(c && user && prof){
+        const bucket=proofBucketName();
+        const path=`${user.id}/${prof.profileKey}/transactions/${transactionId}/${Date.now()}_${safeFileName(file.name)}`;
+        const result=await c.storage.from(bucket).upload(path,file,{upsert:true,contentType:file.type||"application/octet-stream"});
+        if(result.error){
+          alert("Receipt/proof metadata was kept, but cloud file upload failed: "+explainError(result.error)+"\n\nCheck that the private Supabase Storage bucket and policies exist.");
+          addAudit("Proof Upload Failed",`Transaction ${transactionId}: ${result.error.message||result.error}`);
+          return Object.assign(baseMeta,{status:"upload failed - metadata only",uploadError:String(result.error.message||result.error)});
+        }
+        addAudit("Proof Uploaded",`Receipt/proof stored for transaction ${transactionId}.`);
+        return Object.assign(baseMeta,{status:"cloud stored",storageProvider:"supabase-storage",storageBucket:bucket,storagePath:path});
+      }
+      alert("Proof file metadata was saved only. To store/view the actual picture, configure Supabase, sign in, and attach the file again.");
+      addAudit("Proof Metadata Saved",`Proof metadata saved locally for transaction ${transactionId}; file itself was not stored.`);
+      return baseMeta;
+    }
+    async function openTransactionProof(id){
+      const p=currentProfile(); if(!p) return;
+      const t=p.transactions.find(x=>x.id===id); const a=t && t.proofAttachment;
+      if(!a) return alert("No proof file is attached to this transaction.");
+      if(!a.storagePath || !a.storageBucket) return alert("This transaction has proof metadata only. File name: "+(a.fileName||"proof file")+". Attach again while signed into Supabase to store and view the actual file.");
+      const c=getSupabaseClient(); const user=await getSupabaseUser();
+      if(!c || !user) return alert("Sign in to Supabase cloud first to view private receipt/proof files.");
+      const r=await c.storage.from(a.storageBucket).createSignedUrl(a.storagePath, 60*10);
+      if(r.error) return alert("Could not open proof file: "+explainError(r.error));
+      window.open(r.data.signedUrl,"_blank");
+    }
+    function removeTransactionProof(id){
+      const p=currentProfile(); if(!p) return;
+      const t=p.transactions.find(x=>x.id===id); if(!t||!t.proofAttachment) return alert("No proof file is attached.");
+      if(!confirm("Remove proof attachment reference from this transaction? This does not delete old cloud storage files in this test version.")) return;
+      t.proofAttachment=null; t.updatedAt=nowIso(); saveStore(); addAudit("Remove Proof Reference",`Proof attachment reference removed from transaction ${id}.`); scheduleAutoCloudSave("transaction proof reference removed"); renderAll();
+    }
+
+    function saveBudget(e){ e.preventDefault(); upsert("budgets",{id:getForm("budgetId")||makeId(),month:getForm("budgetMonth"),category:getForm("budgetCategory"),amount:parse(getForm("budgetAmount")),materiality:parse(getForm("budgetMateriality")),note:getForm("budgetNote"),createdAt:nowIso()}); clearBudgetForm(); }
+    function clearBudgetForm(){ clearForm(["budgetId","budgetCategory","budgetAmount","budgetMateriality","budgetNote"]); }
+    function saveAsset(e){ e.preventDefault(); upsert("assets",{id:getForm("assetId")||makeId(),date:getForm("assetDate"),name:getForm("assetName"),category:getForm("assetCategory"),value:parse(getForm("assetValue")),proof:getForm("assetProof"),note:getForm("assetNote"),createdAt:nowIso()}); clearAssetForm(); }
+    function clearAssetForm(){ clearForm(["assetId","assetName","assetCategory","assetValue","assetNote"]); }
+    function saveLiability(e){ e.preventDefault(); upsert("liabilities",{id:getForm("liabilityId")||makeId(),date:getForm("liabilityDate"),name:getForm("liabilityName"),category:getForm("liabilityCategory"),value:parse(getForm("liabilityValue")),due:getForm("liabilityDue"),proof:getForm("liabilityProof"),note:getForm("liabilityNote"),createdAt:nowIso()}); clearLiabilityForm(); }
+    function clearLiabilityForm(){ clearForm(["liabilityId","liabilityName","liabilityCategory","liabilityValue","liabilityDue","liabilityNote"]); }
+    function saveInvestment(e){ e.preventDefault(); upsert("investments",{id:getForm("investmentId")||makeId(),date:getForm("investmentDate"),name:getForm("investmentName"),type:getForm("investmentType"),cost:parse(getForm("investmentCost")),currentValue:parse(getForm("investmentValue")),note:getForm("investmentNote"),createdAt:nowIso()}); clearInvestmentForm(); }
+    function clearInvestmentForm(){ clearForm(["investmentId","investmentName","investmentType","investmentCost","investmentValue","investmentNote"]); }
+    function saveProject(e){ e.preventDefault(); upsert("projects",{id:getForm("projectId")||makeId(),name:getForm("projectName"),status:getForm("projectStatus"),budget:parse(getForm("projectBudget")),actualCost:parse(getForm("projectCost")),expectedReturn:parse(getForm("projectReturn")),note:getForm("projectNote"),createdAt:nowIso()}); clearProjectForm(); }
+    function clearProjectForm(){ clearForm(["projectId","projectName","projectBudget","projectCost","projectReturn","projectNote"]); }
+    function saveNote(e){ e.preventDefault(); upsert("notes",{id:getForm("noteId")||makeId(),date:getForm("noteDate"),area:getForm("noteArea"),priority:getForm("notePriority"),text:getForm("noteText"),createdAt:nowIso()}); clearNoteForm(); }
+    function clearNoteForm(){ clearForm(["noteId","noteArea","noteText"]); }
+    function editSimple(collection,id,prefix,fields){ const x=currentProfile()[collection].find(r=>r.id===id); if(!x) return; fields.forEach(f=>{ const el=$(prefix+f[0].toUpperCase()+f.slice(1)); if(el) el.value=x[f]??""; }); $(prefix+"Id").value=id; switchTab(collection,document.querySelector(`nav button[onclick*="${collection}"]`)); }
+
+    function renderTables(){ const p=currentProfile(); if(!p) return; const sortedTransactions=[...p.transactions].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")) || String(a.createdAt||"").localeCompare(String(b.createdAt||""))); $("transactionTable").innerHTML=sortedTransactions.map(x=>{ const hasProof=Boolean(x.proofAttachment); const proofStatus=hasProof ? (x.proofAttachment.storagePath ? "Image/PDF stored" : "Metadata only") : "No image/PDF"; const proofName=hasProof ? escapeHtml(x.proofAttachment.fileName||"proof file") : "No receipt/proof file"; const proofClass=hasProof ? "good" : "warn"; return `<tr><td><strong>${escapeHtml(x.date||"")}</strong><br><span class="pill ${proofClass}">${proofStatus}</span><br><span class="small">${proofName}</span></td><td>${x.month}</td><td>${x.type}</td><td>${x.status}</td><td>${escapeHtml(x.category)}</td><td>${money(x.amount)} ${x.currency}</td><td>${money(x.ntdAmount)}</td><td>${escapeHtml(x.method)}</td><td>${escapeHtml(x.description)}</td><td><button onclick="editTransaction('${x.id}')">Edit</button> ${x.proofAttachment?`<button class="secondary-btn" onclick="openTransactionProof('${x.id}')">View Proof</button> <button class="warning-btn" onclick="removeTransactionProof('${x.id}')">Remove Proof</button>`:''} <button class="danger-btn" onclick="removeRecord('transactions','${x.id}')">Remove</button></td></tr>`; }).join("");
+      $("budgetTable").innerHTML=p.budgets.map(x=>{ const actual=p.transactions.filter(t=>t.type==="expense"&&t.month===x.month&&String(t.category).toLowerCase()===String(x.category).toLowerCase()).reduce((a,t)=>a+parse(t.ntdAmount),0); const variance=parse(x.amount)-actual; return `<tr><td>${x.month}</td><td>${escapeHtml(x.category)}</td><td>${money(x.amount)}</td><td>${money(actual)}</td><td>${money(variance)}</td><td>${pct(actual/Math.max(1,parse(x.amount))*100)}</td><td>${escapeHtml(x.note)}</td><td><button onclick="removeRecord('budgets','${x.id}')">Remove</button></td></tr>`; }).join("");
+      $("assetTable").innerHTML=p.assets.map(x=>`<tr><td>${x.date}</td><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.category)}</td><td>${money(x.value)}</td><td>${escapeHtml(x.proof)}</td><td>${escapeHtml(x.note)}</td><td><button onclick="removeRecord('assets','${x.id}')">Remove</button></td></tr>`).join("");
+      $("liabilityTable").innerHTML=p.liabilities.map(x=>`<tr><td>${x.date}</td><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.category)}</td><td>${money(x.value)}</td><td>${escapeHtml(x.due)}</td><td>${escapeHtml(x.proof)}</td><td>${escapeHtml(x.note)}</td><td><button onclick="removeRecord('liabilities','${x.id}')">Remove</button></td></tr>`).join("");
+      $("investmentTable").innerHTML=p.investments.map(x=>{ const gl=parse(x.currentValue)-parse(x.cost), roi=gl/Math.max(1,parse(x.cost))*100; return `<tr><td>${x.date}</td><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.type)}</td><td>${money(x.cost)}</td><td>${money(x.currentValue)}</td><td>${money(gl)}</td><td>${pct(roi)}</td><td>${escapeHtml(x.note)}</td><td><button onclick="removeRecord('investments','${x.id}')">Remove</button></td></tr>`; }).join("");
+      $("projectTable").innerHTML=p.projects.map(x=>`<tr><td>${escapeHtml(x.name)}</td><td>${escapeHtml(x.status)}</td><td>${money(x.budget)}</td><td>${money(x.actualCost)}</td><td>${money(x.expectedReturn)}</td><td>${pct((parse(x.expectedReturn)-parse(x.actualCost))/Math.max(1,parse(x.actualCost))*100)}</td><td>${escapeHtml(x.note)}</td><td><button onclick="removeRecord('projects','${x.id}')">Remove</button></td></tr>`).join("");
+      $("noteTable").innerHTML=p.notes.map(x=>`<tr><td>${x.date}</td><td>${escapeHtml(x.area)}</td><td>${escapeHtml(x.priority)}</td><td>${escapeHtml(x.text)}</td><td><button onclick="removeRecord('notes','${x.id}')">Remove</button></td></tr>`).join(""); }
+
+    function accountType(account){ const s=STANDARD_ACCOUNTS.find(a=>a.name.toLowerCase()===String(account).toLowerCase()); if(s) return s.type; const name=String(account||"").toLowerCase(); if(name.includes("receivable")||name.includes("bank")||name.includes("cash")||name.includes("asset")||name.includes("inventory")||name.includes("investment")) return "asset"; if(name.includes("payable")||name.includes("loan")||name.includes("liability")||name.includes("creditor")) return "liability"; if(name.includes("revenue")||name.includes("income")||name.includes("sales")) return "income"; if(name.includes("expense")||name.includes("rent")||name.includes("transport")||name.includes("utility")||name.includes("salary")||name.includes("wage")) return "expense"; if(name.includes("capital")||name.includes("equity")||name.includes("drawing")) return "equity"; return "asset"; }
+    function normalSide(type){ return ["asset","expense","drawings"].includes(String(type).toLowerCase()) ? "debit" : "credit"; }
+    function balanceImpact(entry){ return normalSide(accountType(entry.account))==="debit" ? parse(entry.debit)-parse(entry.credit) : parse(entry.credit)-parse(entry.debit); }
+    function paymentAccount(method){ return String(method||"").toLowerCase().includes("cash") ? "Cash" : "Bank"; }
+    function post(account,type,date,month,detail,debit,credit,source,sourceId,extra={}){ return Object.assign({id:"auto_"+String(source||"source")+"_"+String(sourceId||makeId())+"_"+account.replace(/\W+/g,"_"),date:date||today(),month:month||String(date||today()).slice(0,7),account,accountType:type||accountType(account),detail:detail||"",debit:parse(debit),credit:parse(credit),source:source||"automatic",sourceId:sourceId||"",createdAt:nowIso(),automatic:true,voided:false},extra); }
+    function automaticLedgerEntries(){ const p=currentProfile(); if(!p) return []; const entries=[]; p.transactions.forEach(t=>{ const amount=parse(t.ntdAmount); if(!amount) return; const pay=paymentAccount(t.method); const cat=(t.category||"").trim(); const detail=t.description||cat||"Transaction"; if(t.type==="income"){ if(t.status==="receivable") { entries.push(post("Accounts Receivable","asset",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(cat||"Sales Revenue","income",t.date,t.month,detail,0,amount,"transaction",t.id)); } else { entries.push(post(pay,"asset",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(cat||"Sales Revenue","income",t.date,t.month,detail,0,amount,"transaction",t.id)); } } else if(t.type==="expense"){ if(t.status==="payable"||t.status==="unpaid"){ entries.push(post(cat||"Other Expenses","expense",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post("Accounts Payable","liability",t.date,t.month,detail,0,amount,"transaction",t.id)); } else { entries.push(post(cat||"Other Expenses","expense",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(pay,"asset",t.date,t.month,detail,0,amount,"transaction",t.id)); } } else if(t.type==="investment"){ entries.push(post("Investments","asset",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(pay,"asset",t.date,t.month,detail,0,amount,"transaction",t.id)); } else if(t.type==="debt"){ entries.push(post("Loans Payable","liability",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(pay,"asset",t.date,t.month,detail,0,amount,"transaction",t.id)); } else if(t.type==="savings"){ entries.push(post("Bank","asset",t.date,t.month,detail,amount,0,"transaction",t.id)); entries.push(post(pay,"asset",t.date,t.month,detail,0,amount,"transaction",t.id)); }});
+      p.assets.forEach(a=>entries.push(post(a.category||"Other Assets","asset",a.date,String(a.date||today()).slice(0,7),"Asset recorded: "+a.name,parse(a.value),0,"asset",a.id)));
+      p.liabilities.forEach(l=>entries.push(post(l.category||"Other Liabilities","liability",l.date,String(l.date||today()).slice(0,7),"Liability recorded: "+l.name,0,parse(l.value),"liability",l.id)));
+      p.investments.forEach(i=>entries.push(post("Investments","asset",i.date,String(i.date||today()).slice(0,7),"Investment recorded: "+i.name,parse(i.currentValue),0,"investment",i.id)));
+      return entries; }
+    function ledgerEntries(){ const p=currentProfile(); if(!p) return []; if(!Array.isArray(p.ledgerEntries)) p.ledgerEntries=[]; return [...automaticLedgerEntries(), ...p.ledgerEntries.filter(x=>!x.voided)].sort((a,b)=>String(a.date).localeCompare(String(b.date))||String(a.createdAt).localeCompare(String(b.createdAt))); }
+    function balanceStatus(account,balance){ const type=accountType(account), abs=Math.abs(balance), side=normalSide(type); if(abs<.005) return {cls:"ledger-status ledger-zero", label:"Zero balance", explanation:"No current balance recorded for this account."}; if(balance>0){ const labels={asset:"Positive asset balance",liability:"Positive payable balance",equity:"Positive equity balance",income:"Positive income balance",expense:"Positive expense balance"}; return {cls:"ledger-status ledger-positive", label:labels[type]||"Positive balance", explanation:`Normal ${side} balance for ${type} account.`}; } const warnings={asset:"Negative asset balance. Check overdraft, overpayment, duplicate payment, or wrong posting.",liability:"Negative liability balance. Check supplier overpayment, debit correction, or wrong posting.",equity:"Negative equity balance. Check drawings, losses, or wrong posting.",income:"Negative income balance. Check refunds, reversals, or wrong posting.",expense:"Negative expense balance. Check refunds, reimbursement, reversal, or wrong posting."}; return {cls:"ledger-status ledger-negative", label:"Negative / review", explanation:(warnings[type]||"Negative balance. Review this account.")+` Normal side is ${side}.`}; }
+    function ledgerAccountSummaries(){ const map={}; ledgerEntries().forEach(e=>{ if(!map[e.account]) map[e.account]={account:e.account,type:accountType(e.account),debit:0,credit:0,balance:0,count:0}; map[e.account].debit+=parse(e.debit); map[e.account].credit+=parse(e.credit); map[e.account].balance+=balanceImpact(e); map[e.account].count++; }); STANDARD_ACCOUNTS.forEach(a=>{ if(!map[a.name]) map[a.name]={account:a.name,type:a.type,debit:0,credit:0,balance:0,count:0}; }); return Object.values(map).sort((a,b)=>a.account.localeCompare(b.account)); }
+    function populateLedgerAccountSelects(){ const options=STANDARD_ACCOUNTS.map(a=>`<option value="${escapeHtml(a.name)}">${escapeHtml(a.name)} (${a.type})</option>`).join("")+`<option value="__custom__">Custom account...</option>`; if($("ledgerAccount")) $("ledgerAccount").innerHTML=options; if($("ledgerViewAccount")) $("ledgerViewAccount").innerHTML=ledgerAccountSummaries().map(a=>`<option value="${escapeHtml(a.account)}">${escapeHtml(a.account)} (${a.type})</option>`).join(""); }
+    function saveLedgerEntry(e){ e.preventDefault(); const p=currentProfile(); if(!p) return; if(!Array.isArray(p.ledgerEntries)) p.ledgerEntries=[]; let account=getForm("ledgerAccount")==="__custom__"?getForm("ledgerCustomAccount").trim():getForm("ledgerAccount"); if(!account) return alert("Choose or enter an account name."); const debit=parse(getForm("ledgerDebit")), credit=parse(getForm("ledgerCredit")); if(debit>0&&credit>0) return alert("Use either debit or credit for one ledger line, not both."); if(debit===0&&credit===0) return alert("Enter a debit or credit amount."); const item={id:getForm("ledgerId")||makeId(),date:getForm("ledgerDate"),month:getForm("ledgerMonth"),account,accountType:getForm("ledgerAccountType")||accountType(account),detail:getForm("ledgerDetail"),debit,credit,source:getForm("ledgerSource"),createdAt:nowIso(),automatic:false,voided:false}; const i=p.ledgerEntries.findIndex(x=>x.id===item.id); if(i>=0) p.ledgerEntries[i]=item; else p.ledgerEntries.unshift(item); saveStore(); addAudit("Save Ledger Entry",`Manual ledger entry saved for ${account}.`); scheduleAutoCloudSave(`manual ledger entry saved for ${account}`); clearLedgerForm(); renderAll(); }
+    function clearLedgerForm(){ clearForm(["ledgerId","ledgerCustomAccount","ledgerDebit","ledgerCredit","ledgerDetail"]); $("ledgerDebit").value=0; $("ledgerCredit").value=0; }
+    function voidLedgerEntry(id){ const p=currentProfile(); if(!p) return; const e=p.ledgerEntries.find(x=>x.id===id); if(!e || e.automatic) return; if(!confirm("Void this manual ledger entry? It will be marked voided, not permanently erased.")) return; e.voided=true; e.voidedAt=nowIso(); saveStore(); addAudit("Void Ledger Entry",`Manual ledger entry voided for ${e.account}.`); scheduleAutoCloudSave(`manual ledger entry voided for ${e.account}`); renderAll(); }
+    function renderLedger(){ populateLedgerAccountSelects(); const summaries=ledgerAccountSummaries(); $("ledgerSummary").innerHTML=summaries.map(s=>{ const st=balanceStatus(s.account,s.balance); return `<div class="metric-card"><p>${escapeHtml(s.account)} <span class="small">${s.type}</span></p><h3>${money(s.balance)}</h3><span class="${st.cls}">${st.label}</span><p class="muted">${escapeHtml(st.explanation)}</p></div>`; }).join(""); const account=$("ledgerViewAccount").value || (summaries[0]&&summaries[0].account) || "Bank"; const month=$("ledgerFilterMonth").value; const mode=$("ledgerViewMode").value; let entries=ledgerEntries().filter(e=>e.account===account); if(month) entries=entries.filter(e=>e.month===month); if(mode==="manual") entries=entries.filter(e=>!e.automatic); if(mode==="automatic") entries=entries.filter(e=>e.automatic); let running=0, rows="", debitRows="", creditRows=""; entries.forEach(e=>{ const bd=running; running+=balanceImpact(e); const st=balanceStatus(e.account,running); rows+=`<tr><td>${e.date}</td><td>${e.month}</td><td>${escapeHtml(e.source)}</td><td>${escapeHtml(e.detail)}</td><td>${money(e.debit)}</td><td>${money(e.credit)}</td><td>${money(running)}</td><td>${money(bd)}</td><td>${money(running)}</td><td><span class="${st.cls}">${st.label}</span></td><td>${e.automatic?'<span class="small">Auto</span>':`<button class="danger-btn" onclick="voidLedgerEntry('${e.id}')">Void</button>`}</td></tr>`; if(parse(e.debit)>0) debitRows+=`<tr><td>${e.date}</td><td>${escapeHtml(e.detail)}</td><td>${money(e.debit)}</td></tr>`; if(parse(e.credit)>0) creditRows+=`<tr><td>${e.date}</td><td>${escapeHtml(e.detail)}</td><td>${money(e.credit)}</td></tr>`; }); $("ledgerTable").innerHTML=rows||`<tr><td colspan="11">No ledger entries for this account/filter.</td></tr>`; $("ledgerDebitSide").innerHTML=debitRows||`<tr><td colspan="3">No debit entries.</td></tr>`; $("ledgerCreditSide").innerHTML=creditRows||`<tr><td colspan="3">No credit entries.</td></tr>`; const final=running, st=balanceStatus(account,final); $("selectedLedgerStatus").className="alert "+(final<0?"danger":final>0?"good":""); $("selectedLedgerStatus").innerHTML=`<strong>${escapeHtml(account)}</strong><br>Balance b/d: ${entries.length?money(0):money(0)}<br>Balance c/d: <strong>${money(final)}</strong><br><span class="${st.cls}">${st.label}</span><br>${escapeHtml(st.explanation)}`; }
+
+    function renderStatements(){ const p=currentProfile(); if(!p) return; const m=$("statementMonth").value, filter=String($("statementCategoryFilter").value||"").toLowerCase(); const tx=p.transactions.filter(t=>(!m||t.month===m)&&(!filter||String(t.category).toLowerCase().includes(filter))); const income=tx.filter(t=>t.type==="income").reduce((a,t)=>a+parse(t.ntdAmount),0), expenses=tx.filter(t=>t.type==="expense").reduce((a,t)=>a+parse(t.ntdAmount),0); const assets=p.assets.reduce((a,x)=>a+parse(x.value),0)+p.investments.reduce((a,x)=>a+parse(x.currentValue),0), liabilities=p.liabilities.reduce((a,x)=>a+parse(x.value),0), equity=assets-liabilities; $("statementSummary").innerHTML=`<div class="metric-card"><p>Net Profit</p><h3>${money(income-expenses)}</h3></div><div class="metric-card"><p>Assets</p><h3>${money(assets)}</h3></div><div class="metric-card"><p>Liabilities</p><h3>${money(liabilities)}</h3></div><div class="metric-card"><p>Equity</p><h3>${money(equity)}</h3></div>`; $("incomeStatementTable").innerHTML=`<tr><td>Income</td><td>${money(income)}</td></tr><tr><td>Expenses</td><td>${money(expenses)}</td></tr><tr><th>Net Profit / Loss</th><th>${money(income-expenses)}</th></tr>`; $("positionStatementTable").innerHTML=`<tr><td>Assets</td><td>${money(assets)}</td></tr><tr><td>Liabilities</td><td>${money(liabilities)}</td></tr><tr><th>Equity / Net Worth</th><th>${money(equity)}</th></tr>`; }
+    function renderChartsSafe(){ try{ renderCharts(); }catch(e){ console.warn("Chart skipped",e); } }
+    function renderCharts(){ const p=currentProfile(); if(!p||typeof Chart==="undefined") return; const t=totals(); const ctx1=$("incomeExpenseChart"), ctx2=$("balanceChart"); if(!ctx1||!ctx2) return; if(incomeExpenseChart) incomeExpenseChart.destroy(); if(balanceChart) balanceChart.destroy(); incomeExpenseChart=new Chart(ctx1,{type:"bar",data:{labels:["Income","Expenses"],datasets:[{label:"NTD",data:[t.income,t.expenses]}]},options:{responsive:true,maintainAspectRatio:false}}); balanceChart=new Chart(ctx2,{type:"bar",data:{labels:["Assets","Liabilities","Net Worth"],datasets:[{label:"NTD",data:[t.assets,t.liabilities,t.netWorth]}]},options:{responsive:true,maintainAspectRatio:false}}); }
+
+    function saveRateDisclosure(e){ e.preventDefault(); store.rateDisclosures.unshift({id:makeId(),currency:getForm("rateCurrency"),rate:parse(getForm("manualRate")),date:getForm("manualRateDate"),source:getForm("manualRateSource"),reason:getForm("manualRateReason"),createdAt:nowIso()}); saveStore(); addAudit("Rate Disclosure","Manual currency rate disclosure saved."); scheduleAutoCloudSave("manual currency rate disclosure saved"); alert("Rate disclosure saved. Auto cloud save queued for 30 seconds if Supabase is active."); }
+    function runIntegrityCheck(){ const p=currentProfile(); if(!p) return; const issues=[]; p.transactions.forEach(t=>{ if(parse(t.ntdAmount)<=0) issues.push(["High","Transactions","Zero or negative transaction amount",t.description||t.id]); if(t.proof==="not verified") issues.push(["Medium","Transactions","Receipt/proof not verified",t.description||t.id]); if(t.proof!=="not needed" && !t.proofAttachment) issues.push(["Low","Transactions","No receipt/proof file attached",t.description||t.id]); }); ledgerAccountSummaries().filter(s=>s.balance<0).forEach(s=>issues.push(["Review","Ledger",`Negative balance in ${s.account}`,"Check posting, overdraft, overpayment, refund, or correction."])); localStorage.setItem(REPORT_KEY,JSON.stringify({createdAt:nowIso(),issues})); $("integritySummary").className="alert "+(issues.length?"warning":"good"); $("integritySummary").innerHTML=issues.length?`${issues.length} issues/review points found.`:"No major integrity issue found."; $("integrityTable").innerHTML=issues.map(i=>`<tr><td>${i[0]}</td><td>${i[1]}</td><td>${escapeHtml(i[2])}</td><td>${escapeHtml(i[3])}</td></tr>`).join("") || '<tr><td colspan="4">No issues.</td></tr>'; addAudit("Integrity Check",`${issues.length} issues/review points found.`); }
+    function renderIntegrityReport(){ const r=JSON.parse(localStorage.getItem(REPORT_KEY)||"null"); if(r&&$("integritySummary")){ $("integritySummary").innerHTML=`Last check: ${r.createdAt}. Issues: ${r.issues.length}`; $("integrityTable").innerHTML=r.issues.map(i=>`<tr><td>${i[0]}</td><td>${i[1]}</td><td>${escapeHtml(i[2])}</td><td>${escapeHtml(i[3])}</td></tr>`).join(""); } }
+    function exportIntegrityReport(){ downloadText("profitpilot_test10_integrity_report.json", localStorage.getItem(REPORT_KEY)||"{}", "application/json"); }
+
+    function exportJson(){ localStorage.setItem(BACKUP_KEY,nowIso()); downloadText("profitpilot_test10_emergency_backup.json", JSON.stringify(store,null,2), "application/json"); addAudit("Export JSON","Emergency JSON backup exported."); renderBackupStatus(); }
+    function importJson(event){ const file=event.target.files[0]; if(!file) return; const reader=new FileReader(); reader.onload=()=>{ try{ const data=JSON.parse(reader.result); if(!confirm("Importing JSON can replace local cache. Export current data first if needed. Continue?")) return; store=migrateStore(data); activeProfileId=store.activeProfileId||((store.profiles[0]||{}).id)||null; saveStore(); addAudit("Import JSON","Emergency JSON backup imported."); if(activeProfileId) openApp(); else alert("Backup imported. Please login/register."); }catch(e){ alert("Invalid JSON backup: "+e.message); } }; reader.readAsText(file); event.target.value=""; }
+    function importJsonFromLogin(event){ importJson(event); }
+    function exportActiveProfile(){ const p=currentProfile(); if(!p) return alert("No active profile."); downloadText(`profitpilot_active_profile_${p.username||'profile'}.json`, JSON.stringify(p,null,2), "application/json"); addAudit("Export Active Profile","Active profile exported."); }
+    function exportCsv(){ const p=currentProfile(); if(!p) return; let csv="type,date,month,category,description,amount_ntd,proof_file_status,proof_file_name\n"; p.transactions.forEach(t=>csv+=`transaction,${t.date},${t.month},"${String(t.category).replaceAll('"','""')}","${String(t.description).replaceAll('"','""')}",${t.ntdAmount},"${String((t.proofAttachment||{}).status||'').replaceAll('"','""')}","${String((t.proofAttachment||{}).fileName||'').replaceAll('"','""')}"\n`); downloadText("profitpilot_test10_records.csv",csv,"text/csv"); }
+    function exportAuditCsv(){ let csv="date,action,details\n"+store.audit.map(a=>`"${a.date}","${String(a.action).replaceAll('"','""')}","${String(a.details).replaceAll('"','""')}"`).join("\n"); downloadText("profitpilot_test10_audit.csv",csv,"text/csv"); }
+    function exportLedgerCsv(){ let csv="date,month,account,source,detail,debit,credit,balance\n"; let running={}; ledgerEntries().forEach(e=>{ running[e.account]=(running[e.account]||0)+balanceImpact(e); csv+=`"${e.date}","${e.month}","${e.account}","${e.source}","${String(e.detail).replaceAll('"','""')}",${e.debit},${e.credit},${running[e.account]}\n`; }); downloadText("profitpilot_test10_general_ledger.csv",csv,"text/csv"); }
+    function confirmReset(){ if(confirm("This clears local browser cache only. It does not delete Supabase cloud rows. Continue?")){ localStorage.removeItem(STORE_KEY); location.reload(); } }
+
+    function buildReviewIssues(){
+      const p=currentProfile();
+      const issues=[];
+      if(!p) return issues;
+      p.transactions.forEach(t=>{
+        const amount=parse(t.ntdAmount);
+        if(amount<=0) issues.push(["High","Transactions","Zero or negative transaction amount",t.description||t.id]);
+        if(t.proof==="not verified") issues.push(["Medium","Transactions","Receipt/proof not verified",t.description||t.id]);
+        if(t.proof!=="not needed" && !t.proofAttachment) issues.push(["Medium","Receipt / Proof","No image/PDF proof attached",t.description||t.id]);
+        if(t.proofAttachment && String(t.proofAttachment.status||"").toLowerCase().includes("metadata")) issues.push(["Low","Receipt / Proof","Proof metadata exists but actual file is not stored in cloud",t.proofAttachment.fileName||t.description||t.id]);
+        if(t.proofAttachment && String(t.proofAttachment.status||"").toLowerCase().includes("failed")) issues.push(["High","Receipt / Proof","Proof upload failed",t.proofAttachment.fileName||t.description||t.id]);
+      });
+      const seen={};
+      p.transactions.forEach(t=>{
+        const key=[t.date,t.month,t.type,t.category,Number(parse(t.ntdAmount)).toFixed(2),String(t.description||"").trim().toLowerCase()].join("|");
+        seen[key]=(seen[key]||[]).concat(t);
+      });
+      Object.values(seen).filter(group=>group.length>1).forEach(group=>{
+        issues.push(["Review","Duplicate Check",`${group.length} possible duplicate transactions on ${group[0].date} for ${money(group[0].ntdAmount)}`,group[0].description||group[0].category||"Review records with same date, category and amount."]);
+      });
+      ledgerAccountSummaries().filter(s=>s.balance<0).forEach(s=>issues.push(["Review","Ledger",`Negative balance in ${s.account}: ${money(s.balance)}`,"Check overdraft, overpayment, refund, duplicate posting, or correction entry."]));
+      if(unsavedCloudChanges) issues.push(["Medium","Cloud Save","There are unsaved cloud changes","Wait for auto-save, sign into Supabase, or click Save to Supabase Cloud."]);
+      if(autoCloudSaveLastResult && /(failed|skipped|paused|delayed)/i.test(autoCloudSaveLastResult)) issues.push(["Review","Cloud Sync",autoCloudSaveLastResult,"Check Supabase configuration, login status, internet connection, or table/storage setup."]);
+      return issues;
+    }
+
+    function renderReviewCenter(){
+      if(!$("reviewTable")) return;
+      const p=currentProfile();
+      if(!p) return;
+      const issues=buildReviewIssues();
+      const missingProof=p.transactions.filter(t=>t.proof!=="not needed" && !t.proofAttachment).length;
+      const negativeBalances=ledgerAccountSummaries().filter(s=>s.balance<0).length;
+      const possibleDuplicates=issues.filter(i=>i[1]==="Duplicate Check").length;
+      const cloudProblem=autoCloudSaveLastResult && /(failed|skipped|paused|delayed)/i.test(autoCloudSaveLastResult);
+      $("reviewOverview").innerHTML=`<div class="metric-card"><p>Total Review Issues</p><h3>${issues.length}</h3><span class="pill ${issues.length?'warn':'good'}">${issues.length?'Needs review':'Clean'}</span></div><div class="metric-card"><p>Missing Receipt/Proof</p><h3>${missingProof}</h3><span class="pill ${missingProof?'warn':'good'}">${missingProof?'Action needed':'OK'}</span></div><div class="metric-card"><p>Negative Balances</p><h3>${negativeBalances}</h3><span class="pill ${negativeBalances?'bad':'good'}">${negativeBalances?'Check ledger':'OK'}</span></div><div class="metric-card"><p>Possible Duplicates</p><h3>${possibleDuplicates}</h3><span class="pill ${possibleDuplicates?'warn':'good'}">${possibleDuplicates?'Review':'OK'}</span></div>`;
+      $("reviewSummary").className="alert "+(issues.length?"warning":"good");
+      $("reviewSummary").innerHTML=issues.length?`${issues.length} useful warnings found. Review the table below and fix only the items that apply.`:"No major problems found. Records look clean from the current checks.";
+      $("reviewTable").innerHTML=issues.map(i=>`<tr><td>${escapeHtml(i[0])}</td><td>${escapeHtml(i[1])}</td><td>${escapeHtml(i[2])}</td><td>${escapeHtml(i[3])}</td></tr>`).join("") || '<tr><td colspan="4">No current warnings.</td></tr>';
+      const configured=Boolean((window.PROFITPILOT_SUPABASE_CONFIG||{}).projectUrl && (window.PROFITPILOT_SUPABASE_CONFIG||{}).publishableKey);
+      const due=autoCloudSaveDueAt?new Date(autoCloudSaveDueAt).toLocaleTimeString():"Not queued";
+      $("reviewCloudStatus").className="alert "+(cloudProblem?"danger":(unsavedCloudChanges?"warning":"good"));
+      $("reviewCloudStatus").innerHTML=`<strong>Supabase configured:</strong> ${configured?'Yes':'No'}<br><strong>Unsaved cloud changes:</strong> ${unsavedCloudChanges?'Yes':'No'}<br><strong>Auto-save queue:</strong> ${autoCloudSaveDueAt?'Queued for '+escapeHtml(due)+' after '+escapeHtml(autoCloudSaveReason):'Not queued'}<br><strong>Latest auto-save result:</strong> ${escapeHtml(autoCloudSaveLastResult)}<br><strong>Latest auto-load result:</strong> ${escapeHtml(autoCloudLoadLastResult)}<br><strong>Auto logout:</strong> ${escapeHtml(autoLogoutLastResult)}<br><strong>Last cloud save:</strong> ${escapeHtml((p&&p.lastCloudSaveAt)||store.lastCloudSaveAt||"Not saved yet")}`;
+    }
+
+    function renderAudit(){ if(!$("auditTable")) return; $("auditTable").innerHTML=store.audit.map(a=>`<tr><td>${escapeHtml(a.date)}</td><td>${escapeHtml(a.action)}</td><td>${escapeHtml(a.details)}</td></tr>`).join(""); }
+    function renderAll(){ if(!currentProfile()) return; populateLedgerAccountSelects(); renderDashboard(); renderTables(); renderLedger(); renderStatements(); renderReviewCenter(); renderCloudHistory(); renderIntegrityReport(); renderCloudReadinessDashboard(); }
+
+    function normalizeUsernameForCloud(username){ return String(username||"").trim().toLowerCase().replace(/[^a-z0-9._-]/g,"_").replace(/^_+|_+$/g,"") || "profitpilot_user"; }
+    function usernameToCloudEmail(username){ return normalizeUsernameForCloud(username)+"@profitpilot.local"; }
+    function getSupabaseClient(){ const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; if(!cfg.projectUrl||!cfg.publishableKey||!window.supabase) return null; if(!profitPilotSupabaseClient) profitPilotSupabaseClient=window.supabase.createClient(cfg.projectUrl,cfg.publishableKey); return profitPilotSupabaseClient; }
+    async function getSupabaseUser(){ const c=getSupabaseClient(); if(!c) return null; const r=await c.auth.getUser(); return r.data && r.data.user ? r.data.user : null; }
+    async function cloudRegisterOrLogin(){ const u=$("cloudLoginUsername").value.trim()||$("loginUsername").value.trim()||(currentProfile()||{}).username; const pin=$("cloudLoginPin").value||$("loginPassword").value; if(!u||!pin) return alert("Enter cloud username and PIN."); const c=getSupabaseClient(); if(!c) return alert("Supabase is not configured. Paste Project URL and publishable key first."); let r=await c.auth.signInWithPassword({email:usernameToCloudEmail(u),password:pin}); if(r.error){ const s=await c.auth.signUp({email:usernameToCloudEmail(u),password:pin,options:{data:{profitpilot_username:u}}}); if(s.error) return alert("Cloud register/login failed: "+s.error.message); r=await c.auth.signInWithPassword({email:usernameToCloudEmail(u),password:pin}); if(r.error) return alert("Cloud account created but sign-in failed. Disable email confirmation for testing. "+r.error.message); } const ok=await autoLoadCloudAfterLogin(u,true,"cloud panel login/register"); addAudit("Cloud Register/Login", ok?"Cloud user authenticated and latest cloud profile loaded automatically.":"Cloud user authenticated, but automatic cloud load did not complete."); openApp(); }
+    async function autoLoadCloudAfterLogin(username, createIfMissing, source){
+      if(!autoCloudLoadEnabled){ autoCloudLoadLastResult = "Auto cloud load is disabled."; renderCloudStatus(); return false; }
+      autoCloudLoadLastResult = "Loading latest cloud data after login..."; renderCloudStatus();
+      try{
+        const ok = await loadProfilesForCloudUser(username, createIfMissing);
+        if(ok){
+          unsavedCloudChanges = false;
+          autoCloudLoadLastResult = "Loaded latest cloud data after "+(source||"login")+" at "+new Date().toLocaleString()+".";
+          renderCloudStatus();
+          return true;
+        }
+        autoCloudLoadLastResult = "No cloud profile found after "+(source||"login")+".";
+        renderCloudStatus();
+        return false;
+      }catch(e){
+        autoCloudLoadLastResult = "Auto cloud load failed: "+explainError(e);
+        renderCloudStatus();
+        return false;
+      }
+    }
+    async function loadProfilesForCloudUser(username, createIfMissing){ const c=getSupabaseClient(), user=await getSupabaseUser(); if(!c||!user) return false; const {data,error}=await c.from(CLOUD_TABLES.profiles).select("*").eq("user_id",user.id).order("updated_at",{ascending:false}); if(error){ alert("Cloud profile search failed: "+error.message); return false; } if(data&&data.length){ store.profiles=data.map(row=>{ const p=migrateStore({profiles:[row.profile_data||{}]}).profiles[0]||emptyProfile(row.username,"supabase-auth",row.default_currency,"",""); p.id=p.id||makeId(); p.profileKey=row.profile_key||p.profileKey; p.username=row.username||row.profile_name||p.username; p.password="supabase-auth"; p.lastCloudSaveAt=row.last_cloud_save_at||row.updated_at||p.lastCloudSaveAt; return p; }); activeProfileId=store.profiles[0].id; store.activeProfileId=activeProfileId; saveStore(); unsavedCloudChanges=false; return true; } if(createIfMissing){ const p=emptyProfile(username,"supabase-auth","TWD","",""); store.profiles=[p]; activeProfileId=p.id; saveStore(); await ensureCloudProfileRow(user,p); unsavedCloudChanges=false; return true; } return false; }
+    async function ensureCloudProfileRow(user,p){ const c=getSupabaseClient(); if(!c||!user||!p) return; const payload={user_id:user.id,profile_key:p.profileKey,profile_name:p.username,username:p.username,default_currency:p.defaultCurrency||"TWD",profile_data:p,cloud_source:"supabase",local_updated_at:p.updatedAt||nowIso(),last_cloud_save_at:p.lastCloudSaveAt,updated_at:nowIso()}; const {error}=await c.from(CLOUD_TABLES.profiles).upsert(payload,{onConflict:"user_id,profile_key"}); if(error) throw error; }
+    async function saveActiveProfileToSupabase(silent, versionName){ if(saveLock) return silent ? null : alert("Cloud save already running."); const c=getSupabaseClient(), user=await getSupabaseUser(), p=currentProfile(); if(!c) return silent ? null : alert("Supabase is not configured."); if(!user) return silent ? null : alert("You are not signed into Supabase cloud."); if(!p) return silent ? null : alert("No active profile."); saveLock=true; try{ p.lastCloudSaveAt=nowIso(); p.updatedAt=nowIso(); await ensureCloudProfileRow(user,p); await writeCloudAudit(user,"Cloud Save","Active Test 10 Recording Module profile saved."); await saveCloudVersion(user,p,versionName || (($("cloudBackupName")&&$("cloudBackupName").value.trim())||"manual-save")); markCloudSaved(); addAudit("Cloud Save","Active profile saved to Supabase."); if(!silent) alert("Saved to Supabase Cloud."); renderAll(); }catch(e){ if(silent) throw e; alert("Cloud save failed: "+explainError(e)); } finally{ saveLock=false; } }
+    async function loadActiveProfileFromSupabase(){ const c=getSupabaseClient(), user=await getSupabaseUser(); if(!c) return alert("Supabase is not configured."); if(!user) return alert("You are not signed into Supabase."); if(!confirm("Load from cloud can replace local cache. Export JSON first if needed. Continue?")) return; const {data,error}=await c.from(CLOUD_TABLES.profiles).select("*").eq("user_id",user.id).order("updated_at",{ascending:false}); if(error) return alert("Cloud load failed: "+explainError(error)); if(!data||!data.length) return alert("No cloud profile rows found."); store.profiles=data.map(row=>{ const p=row.profile_data||{}; collectionNames().forEach(k=>p[k]=Array.isArray(p[k])?p[k]:[]); p.ledgerEntries=Array.isArray(p.ledgerEntries)?p.ledgerEntries:[]; p.receiptRetryQueue=Array.isArray(p.receiptRetryQueue)?p.receiptRetryQueue:[]; p.monthlyClosing=Array.isArray(p.monthlyClosing)?p.monthlyClosing:[]; p.id=p.id||makeId(); p.profileKey=row.profile_key||p.profileKey; p.username=row.username||p.username; p.password="supabase-auth"; p.lastCloudSaveAt=row.last_cloud_save_at||row.updated_at; return p; }); activeProfileId=store.profiles[0].id; store.activeProfileId=activeProfileId; saveStore(); unsavedCloudChanges=false; addAudit("Cloud Load","Loaded profile data from Supabase."); openApp(); }
+    async function writeCloudAudit(user,action,details){ const c=getSupabaseClient(), p=currentProfile(); if(!c||!user) return; await c.from(CLOUD_TABLES.audit).insert({user_id:user.id,profile_key:p?p.profileKey:null,action,details,log_data:{version:VERSION},created_at:nowIso()}); }
+    async function saveCloudVersion(user,p,name){ const c=getSupabaseClient(); if(!c||!user||!p) return; await c.from(CLOUD_TABLES.versions).insert({user_id:user.id,profile_key:p.profileKey,version_name:name,snapshot_data:p,created_at:nowIso()}); const hist=JSON.parse(localStorage.getItem(CLOUD_HISTORY_KEY)||"[]"); hist.unshift({id:makeId(),date:nowIso(),name,profile:p.username,records:collectionNames().reduce((a,k)=>a+(p[k]||[]).length,0)+(p.ledgerEntries||[]).length}); localStorage.setItem(CLOUD_HISTORY_KEY,JSON.stringify(hist.slice(0,50))); renderCloudHistory(); }
+    function renderCloudHistory(){ if(!$("cloudHistoryTable")) return; const hist=JSON.parse(localStorage.getItem(CLOUD_HISTORY_KEY)||"[]"); $("cloudHistoryTable").innerHTML=hist.map(h=>`<tr><td>${h.date}</td><td>${escapeHtml(h.name)}</td><td>${escapeHtml(h.profile)}</td><td>${h.records}</td><td><span class="small">local index</span></td></tr>`).join("")||'<tr><td colspan="5">No local cloud save history yet.</td></tr>'; }
+    function previewCloudBackup(){ const p=currentProfile(); if(!p) return; $("cloudBackupPreview").innerHTML=`<strong>Backup preview</strong><br>Profile: ${escapeHtml(p.username)}<br>Transactions: ${p.transactions.length}<br>Manual ledger entries: ${(p.ledgerEntries||[]).length}<br>Automatic ledger postings: ${automaticLedgerEntries().length}<br>Transaction proof files: ${p.transactions.filter(t=>t.proofAttachment).length}<br>Size: ${JSON.stringify(p).length.toLocaleString()} characters`; }
+    function runEasyActivationCheck(){ const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; const checks=[ ["Project URL pasted",!!(cfg.projectUrl&&String(cfg.projectUrl).includes("supabase.co"))], ["Publishable key pasted",!!(cfg.publishableKey&&String(cfg.publishableKey).length>20)], ["Supabase client script loaded",!!(window.supabase&&window.supabase.createClient)], ["Mode is Test 10 all improvements",cfg.mode==="test10-final-recording-module-all-10-improvements"], ["Receipt bucket name available",!!cfg.receiptBucket], ["Browser online",navigator.onLine] ]; const ok=checks.every(x=>x[1]); $("easyActivationChecklist").className="alert "+(ok?"good":"warning"); $("easyActivationChecklist").innerHTML=checks.map(x=>`${x[1]?'✅':'⚠️'} ${escapeHtml(x[0])}`).join("<br>"); }
+    const SUPABASE_SQL = `create table if not exists profitpilot_profiles (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade, profile_key text not null, profile_name text not null, username text not null, default_currency text default 'TWD', profile_data jsonb not null default '{}'::jsonb, cloud_source text default 'supabase', local_updated_at timestamptz, last_cloud_save_at timestamptz, created_at timestamptz default now(), updated_at timestamptz default now(), unique(user_id, profile_key));\ncreate table if not exists profitpilot_records (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade, profile_key text not null, record_type text not null, record_id text not null, record_data jsonb not null default '{}'::jsonb, created_at timestamptz default now(), updated_at timestamptz default now(), unique(user_id, profile_key, record_type, record_id));\ncreate table if not exists profitpilot_cloud_versions (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade, profile_key text not null, version_name text, snapshot_data jsonb not null default '{}'::jsonb, created_at timestamptz default now());\ncreate table if not exists profitpilot_audit_logs (id uuid primary key default gen_random_uuid(), user_id uuid references auth.users(id) on delete cascade, profile_key text, action text not null, details text, log_data jsonb default '{}'::jsonb, created_at timestamptz default now());\nalter table profitpilot_profiles enable row level security; alter table profitpilot_records enable row level security; alter table profitpilot_cloud_versions enable row level security; alter table profitpilot_audit_logs enable row level security;\ncreate policy "Users can manage their own ProfitPilot profiles" on profitpilot_profiles for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);\ncreate policy "Users can manage their own ProfitPilot records" on profitpilot_records for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);\ncreate policy "Users can manage their own ProfitPilot cloud versions" on profitpilot_cloud_versions for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);\ncreate policy "Users can manage their own ProfitPilot audit logs" on profitpilot_audit_logs for all to authenticated using ((select auth.uid()) = user_id) with check ((select auth.uid()) = user_id);
+insert into storage.buckets (id, name, public) values ('profitpilot-receipts', 'profitpilot-receipts', false) on conflict (id) do nothing;
+create policy "Users can upload their own ProfitPilot receipt files" on storage.objects for insert to authenticated with check (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "Users can read their own ProfitPilot receipt files" on storage.objects for select to authenticated using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "Users can update their own ProfitPilot receipt files" on storage.objects for update to authenticated using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text) with check (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);
+create policy "Users can delete their own ProfitPilot receipt files" on storage.objects for delete to authenticated using (bucket_id = 'profitpilot-receipts' and (storage.foldername(name))[1] = (select auth.uid())::text);`;
+    function downloadSupabaseSql(){ downloadText("profitpilot_test10_supabase_setup.sql",SUPABASE_SQL,"text/sql"); }
+    function showSupabaseActivationSteps(){ alert("Simple Supabase Activation Steps:\n\n1. Open this file in VS Code.\n2. Search: PROFITPILOT_SUPABASE_CONFIG.\n3. Paste only Project URL and publishable/anon key.\n4. Run the SQL in Supabase SQL Editor, including the private profitpilot-receipts Storage bucket policies.\n5. In Auth settings, disable email confirmation for testing.\n6. Save as index.html and push to GitHub Pages.\n7. Register/login in the app.\n8. Run Easy Activation, Schema, RLS, and Login tests.\n9. Add a small test record and optionally attach a receipt/proof image. Manual Save still works, and automatic cloud save should queue for 30 seconds after the record is saved or edited."); }
+    async function runCloudLoginReadiness(){ const c=getSupabaseClient(); if(!c) return setCloudResult("Supabase not configured.","warning"); const user=await getSupabaseUser(); setCloudResult(user?`Signed in as ${escapeHtml(user.email)}`:"Not signed in. Use Cloud Register/Login first.",user?"good":"warning"); }
+    async function runSchemaChecker(){ const c=getSupabaseClient(); if(!c) return setCloudResult("Supabase not configured.","warning"); let html="<strong>Schema check</strong><br>"; for(const table of Object.values(CLOUD_TABLES)){ const r=await c.from(table).select("*").limit(1); html += (r.error?"❌ ":"✅ ")+table+(r.error?": "+escapeHtml(explainError(r.error)):"")+"<br>"; } setCloudResult(html,"warning"); }
+    async function runRlsPolicyTester(){ const c=getSupabaseClient(), user=await getSupabaseUser(); if(!c||!user) return setCloudResult("Sign in first before RLS test.","warning"); const p=currentProfile(); const test={user_id:user.id,profile_key:(p&&p.profileKey)||makeId(),profile_name:"rls_test",username:"rls_test",profile_data:{test:true},updated_at:nowIso()}; const r=await c.from(CLOUD_TABLES.profiles).upsert(test,{onConflict:"user_id,profile_key"}); setCloudResult(r.error?"RLS test failed: "+escapeHtml(explainError(r.error)):"RLS test insert/update passed for own user row.",r.error?"danger":"good"); }
+
+    async function runReceiptStorageCheck(){ const c=getSupabaseClient(), user=await getSupabaseUser(); const cfg=window.PROFITPILOT_SUPABASE_CONFIG||{}; if(!c) return setCloudResult("Supabase is not configured yet. Paste Project URL and publishable key first.","warning"); if(!user) return setCloudResult("Sign in first before checking receipt storage.","warning"); if(!cfg.receiptBucket) return setCloudResult("Receipt bucket name is missing in the config.","warning"); const testPath = `${user.id}/storage-check-${Date.now()}.txt`; const blob = new Blob(["ProfitPilot receipt storage check"],{type:"text/plain"}); const up = await c.storage.from(cfg.receiptBucket).upload(testPath, blob, {upsert:true}); if(up.error) return setCloudResult("Receipt storage check failed: "+escapeHtml(explainError(up.error)),"danger"); const del = await c.storage.from(cfg.receiptBucket).remove([testPath]); setCloudResult(del.error?"Receipt upload worked, but cleanup failed: "+escapeHtml(explainError(del.error)):"Receipt storage is ready. Upload, read policy, and path format are working for this user.",del.error?"warning":"good"); }
+    function setCloudResult(html,type){ $("cloudVerificationResults").className="alert "+type; $("cloudVerificationResults").innerHTML=html; }
+    function explainError(err){ const msg=String((err&&(err.message||err.details||err.hint))||err||""); const low=msg.toLowerCase(); if(low.includes("relation")&&low.includes("does not exist")) return msg+" — Table missing. Run the Test 10 SQL."; if(low.includes("row-level")||low.includes("rls")||low.includes("permission")) return msg+" — RLS policy is blocking the action. Check user_id = auth.uid() policies."; if(low.includes("column")&&low.includes("does not exist")) return msg+" — Column mismatch. Run the full Test 10 SQL compatibility structure."; if(low.includes("invalid api key")||low.includes("jwt")) return msg+" — Check Project URL and publishable/anon key."; if(low.includes("failed to fetch")||low.includes("network")) return msg+" — Network, CORS, or Project URL problem."; return msg||"Unknown error."; }
+
+
+
+    /* ================= TEST 10 FINAL 10 IMPROVEMENTS LAYER ================= */
+    let autoLogoutWarningTimer = null;
+    let autoLogoutFinalTimer = null;
+    let logoutCountdownInterval = null;
+    const AUTO_LOGOUT_WARNING_MS = Math.max(30000, AUTO_LOGOUT_DELAY_MS - 15000);
+    const AUTO_LOGOUT_COUNTDOWN_SECONDS = 15;
+
+    function transactionDuplicateGroups(){
+      const p=currentProfile(); const seen={}; if(!p) return {};
+      p.transactions.forEach(t=>{
+        const key=[t.date,t.type,t.category,Number(parse(t.ntdAmount)).toFixed(2),String(t.description||"").trim().toLowerCase(),String(t.reference||"").trim().toLowerCase()].join("|");
+        seen[key]=(seen[key]||[]).concat(t.id);
+      });
+      return seen;
+    }
+    function isPossibleDuplicate(t){ const groups=transactionDuplicateGroups(); return Object.values(groups).some(ids=>ids.length>1 && ids.includes(t.id)); }
+    function transactionReviewStatus(t){
+      const issues=[];
+      if(parse(t.ntdAmount)<=0) issues.push("needs-review");
+      if(t.proof!=="not needed" && !t.proofAttachment) issues.push("missing-receipt");
+      if(t.proofAttachment && String(t.proofAttachment.status||"").toLowerCase().includes("metadata")) issues.push("receipt-metadata-only");
+      if(t.proofAttachment && String(t.proofAttachment.status||"").toLowerCase().includes("failed")) issues.push("needs-review");
+      if(isPossibleDuplicate(t)) issues.push("duplicate");
+      if(unsavedCloudChanges) issues.push("cloud-pending");
+      if(!issues.length) return {code:"complete", label:"Complete", cls:"status-complete"};
+      if(issues.includes("needs-review")) return {code:"needs-review", label:"Needs review", cls:"status-warning"};
+      if(issues.includes("duplicate")) return {code:"duplicate", label:"Possible duplicate", cls:"status-review"};
+      if(issues.includes("missing-receipt")) return {code:"missing-receipt", label:"Missing receipt", cls:"status-review"};
+      if(issues.includes("receipt-metadata-only")) return {code:"metadata", label:"Proof metadata only", cls:"status-review"};
+      if(issues.includes("cloud-pending")) return {code:"cloud-pending", label:"Cloud pending", cls:"status-cloud"};
+      return {code:"needs-review", label:"Needs review", cls:"status-review"};
+    }
+    function transactionMatchesFilters(t){
+      const search=($('txSearch')&&$('txSearch').value||"").toLowerCase().trim();
+      const month=$('txFilterMonth')&&$('txFilterMonth').value;
+      const type=$('txFilterType')&&$('txFilterType').value;
+      const proof=$('txFilterProof')&&$('txFilterProof').value;
+      const review=$('txFilterReview')&&$('txFilterReview').value;
+      const text=[t.category,t.description,t.reference,t.method,t.status].join(" ").toLowerCase();
+      const hasProof=Boolean(t.proofAttachment);
+      const stored=hasProof && t.proofAttachment.storagePath;
+      const meta=hasProof && !t.proofAttachment.storagePath;
+      const rs=transactionReviewStatus(t).code;
+      if(search && !text.includes(search)) return false;
+      if(month && t.month!==month) return false;
+      if(type && t.type!==type) return false;
+      if(proof==="stored" && !stored) return false;
+      if(proof==="metadata" && !meta) return false;
+      if(proof==="missing" && hasProof) return false;
+      if(review && rs!==review) return false;
+      return true;
+    }
+
+    /* Override table render to add filters and transaction review status. */
+    const originalRenderTablesForTest10 = renderTables;
+    renderTables = function(){
+      const p=currentProfile(); if(!p) return;
+      const sortedTransactions=[...p.transactions].sort((a,b)=>String(a.date||"").localeCompare(String(b.date||"")) || String(a.createdAt||"").localeCompare(String(b.createdAt||""))).filter(transactionMatchesFilters);
+      if($('transactionTable')) $('transactionTable').innerHTML=sortedTransactions.map(x=>{ const hasProof=Boolean(x.proofAttachment); const proofStatus=hasProof ? (x.proofAttachment.storagePath ? "Image/PDF stored" : "Metadata only") : "No image/PDF"; const proofName=hasProof ? escapeHtml(x.proofAttachment.fileName||"proof file") : "No receipt/proof file"; const proofClass=hasProof ? (x.proofAttachment.storagePath?'good':'warn') : "warn"; const rs=transactionReviewStatus(x); return `<tr><td><strong>${escapeHtml(x.date||"")}</strong><br><span class="pill ${proofClass}">${proofStatus}</span><br><span class="small">${proofName}</span></td><td><span class="pill ${rs.cls}">${escapeHtml(rs.label)}</span></td><td>${x.month}</td><td>${x.type}</td><td>${x.status}</td><td>${escapeHtml(x.category)}</td><td>${money(x.amount)} ${x.currency}</td><td>${money(x.ntdAmount)}</td><td>${escapeHtml(x.method)}</td><td>${escapeHtml(x.description)}</td><td><button onclick="editTransaction('${x.id}')">Edit</button> ${x.proofAttachment?`<button class="secondary-btn" onclick="openTransactionProof('${x.id}')">View Proof</button> <button class="warning-btn" onclick="removeTransactionProof('${x.id}')">Remove Proof</button>`:''} <button class="danger-btn" onclick="removeRecord('transactions','${x.id}')">Remove</button></td></tr>`; }).join("") || '<tr><td colspan="11">No transactions match the current filters.</td></tr>';
+      const old=$('transactionTable');
+      try{
+        const temp=$('transactionTable');
+        if(temp){ temp.id='transactionTable_protected'; originalRenderTablesForTest10(); temp.id='transactionTable'; }
+      }catch(e){ console.warn('Non-transaction table render warning:', e); }
+      // Re-render transaction table after original call because original function may overwrite it.
+      if($('transactionTable')) $('transactionTable').innerHTML=sortedTransactions.map(x=>{ const hasProof=Boolean(x.proofAttachment); const proofStatus=hasProof ? (x.proofAttachment.storagePath ? "Image/PDF stored" : "Metadata only") : "No image/PDF"; const proofName=hasProof ? escapeHtml(x.proofAttachment.fileName||"proof file") : "No receipt/proof file"; const proofClass=hasProof ? (x.proofAttachment.storagePath?'good':'warn') : "warn"; const rs=transactionReviewStatus(x); return `<tr><td><strong>${escapeHtml(x.date||"")}</strong><br><span class="pill ${proofClass}">${proofStatus}</span><br><span class="small">${proofName}</span></td><td><span class="pill ${rs.cls}">${escapeHtml(rs.label)}</span></td><td>${x.month}</td><td>${x.type}</td><td>${x.status}</td><td>${escapeHtml(x.category)}</td><td>${money(x.amount)} ${x.currency}</td><td>${money(x.ntdAmount)}</td><td>${escapeHtml(x.method)}</td><td>${escapeHtml(x.description)}</td><td><button onclick="editTransaction('${x.id}')">Edit</button> ${x.proofAttachment?`<button class="secondary-btn" onclick="openTransactionProof('${x.id}')">View Proof</button> <button class="warning-btn" onclick="removeTransactionProof('${x.id}')">Remove Proof</button>`:''} <button class="danger-btn" onclick="removeRecord('transactions','${x.id}')">Remove</button></td></tr>`; }).join("") || '<tr><td colspan="11">No transactions match the current filters.</td></tr>';
+    };
+
+    function getClosingMonth(){ return ($('statementMonth')&&$('statementMonth').value) || thisMonth(); }
+    function closingItem(p, month, label, ok, action){ return {label, ok, action}; }
+    function monthlyClosingItems(){
+      const p=currentProfile(); const month=getClosingMonth(); if(!p) return [];
+      const tx=p.transactions.filter(t=>t.month===month);
+      const missing=tx.filter(t=>t.proof!=="not needed" && !t.proofAttachment).length;
+      const neg=ledgerAccountSummaries().filter(s=>s.balance<0).length;
+      const duplicates=Object.values(transactionDuplicateGroups()).filter(ids=>ids.length>1).length;
+      return [
+        closingItem(p,month,"All transactions for the month are entered",tx.length>0,"Enter all income, expenses, assets, liabilities, and investment records."),
+        closingItem(p,month,"All required receipts/proofs are attached",missing===0,`${missing} transaction(s) still need proof or proof status update.`),
+        closingItem(p,month,"Bank and Cash balances reviewed",ledgerAccountSummaries().some(s=>["Bank","Cash"].includes(s.account)),"Check Bank/Cash ledgers and balances b/d/c/d."),
+        closingItem(p,month,"AR and AP reviewed",ledgerAccountSummaries().some(s=>["Accounts Receivable","Accounts Payable"].includes(s.account)),"Review receivables and payables before month-end."),
+        closingItem(p,month,"Negative balances checked",neg===0,`${neg} negative ledger balance(s) need review.`),
+        closingItem(p,month,"Possible duplicates checked",duplicates===0,`${duplicates} possible duplicate group(s) need review.`),
+        closingItem(p,month,"Cloud save confirmed",!unsavedCloudChanges,"Click Save to Cloud or wait for auto-save if signed in."),
+        closingItem(p,month,"Emergency JSON backup exported",Boolean(localStorage.getItem(BACKUP_KEY)),"Export JSON before final monthly closing.")
+      ];
+    }
+    renderClosingChecklist = function(){
+      if(!$('closingChecklist')) return;
+      const items=monthlyClosingItems(); const passed=items.filter(i=>i.ok).length;
+      $('closingChecklist').innerHTML=`<div class="alert ${passed===items.length?'good':'warning'}"><strong>Monthly closing readiness:</strong> ${passed}/${items.length} completed for ${escapeHtml(getClosingMonth())}.</div>`+items.map(i=>`<div class="check"><span>${i.ok?'✅':'⚠️'} ${escapeHtml(i.label)}<br><small class="muted">${escapeHtml(i.action)}</small></span><span class="pill ${i.ok?'good':'warn'}">${i.ok?'Done':'Check'}</span></div>`).join("");
+    };
+
+    function recordingCompletionScore(){
+      const p=currentProfile(); if(!p) return {score:0, details:[]};
+      const issues=buildReviewIssues();
+      const txCount=p.transactions.length;
+      const missingProof=p.transactions.filter(t=>t.proof!=="not needed" && !t.proofAttachment).length;
+      const duplicateGroups=Object.values(transactionDuplicateGroups()).filter(ids=>ids.length>1).length;
+      const negative=ledgerAccountSummaries().filter(s=>s.balance<0).length;
+      let score=100;
+      if(txCount===0) score-=25;
+      score-=Math.min(25, missingProof*5);
+      score-=Math.min(20, duplicateGroups*7);
+      score-=Math.min(20, negative*8);
+      if(unsavedCloudChanges) score-=10;
+      if(!localStorage.getItem(BACKUP_KEY)) score-=5;
+      score=Math.max(0,Math.min(100,score));
+      return {score, details:[`Transactions: ${txCount}`,`Missing receipt/proof: ${missingProof}`,`Possible duplicate groups: ${duplicateGroups}`,`Negative ledger balances: ${negative}`,`Unsaved cloud changes: ${unsavedCloudChanges?'Yes':'No'}`], issues};
+    }
+    const originalRenderCompletenessForTest10 = renderCompleteness;
+    renderCompleteness = function(){
+      try{ originalRenderCompletenessForTest10(); }catch(e){}
+      const r=recordingCompletionScore();
+      if($('completenessScore')) $('completenessScore').innerHTML=`<div class="score-ring" style="--score:${r.score}%">${r.score}%</div><div class="alert ${r.score>=80?'good':r.score>=60?'warning':'danger'}"><strong>Recording Module Completion Score</strong><br>${r.details.map(escapeHtml).join('<br>')}</div>`;
+      if($('healthExplanation')) $('healthExplanation').innerHTML += `<div class="alert ${r.score>=80?'good':'warning'}"><strong>Recording health score:</strong> ${r.score}%. This score combines missing proof, duplicate risk, negative ledger balances, backup status, and unsaved cloud changes.</div>`;
+    };
+
+    async function saveBeforeLogoutIfNeeded(){
+      if(!unsavedCloudChanges) return true;
+      const c=getSupabaseClient(); const user=await getSupabaseUser();
+      if(c && user){
+        try{ autoCloudSaveLastResult='Final save before logout running...'; renderCloudStatus(); await saveActiveProfileToSupabase(true,'auto-save-before-logout'); autoCloudSaveLastResult='Final save before logout completed at '+new Date().toLocaleString()+'.'; return true; }
+        catch(e){ autoCloudSaveLastResult='Final save before logout failed: '+explainError(e); renderCloudStatus(); return confirm('Final cloud save before logout failed. Logout anyway?'); }
+      }
+      return confirm('There are unsaved cloud changes and cloud is not ready. Logout anyway? Export JSON first if needed.');
+    }
+    function hideLogoutCountdown(){ const box=$('logoutCountdownToast'); if(box) box.classList.remove('show'); clearInterval(logoutCountdownInterval); }
+    function stayLoggedIn(){ hideLogoutCountdown(); autoLogoutLastActivity=Date.now(); autoLogoutLastResult='User stayed logged in after inactivity warning at '+new Date().toLocaleTimeString()+'.'; resetAutoLogoutTimer(); renderCloudStatus(); }
+    function showLogoutCountdown(){
+      const box=$('logoutCountdownToast'), text=$('logoutCountdownText'); if(!box||!text) return;
+      let left=AUTO_LOGOUT_COUNTDOWN_SECONDS; box.classList.add('show'); text.textContent=`You will be logged out in ${left} seconds due to inactivity.`;
+      clearInterval(logoutCountdownInterval);
+      logoutCountdownInterval=setInterval(()=>{ left--; text.textContent=`You will be logged out in ${left} seconds due to inactivity.`; if(left<=0){ clearInterval(logoutCountdownInterval); } },1000);
+    }
+    resetAutoLogoutTimer = function(){
+      clearTimeout(autoLockTimer); clearTimeout(autoLogoutWarningTimer); clearTimeout(autoLogoutFinalTimer); hideLogoutCountdown();
+      if(!activeProfileId) return;
+      autoLogoutWarningTimer=setTimeout(()=>{ if(!activeProfileId || $('app').classList.contains('hidden')) return; showLogoutCountdown(); autoLogoutLastResult='Inactivity countdown warning shown at '+new Date().toLocaleTimeString()+'.'; renderCloudStatus(); }, AUTO_LOGOUT_WARNING_MS);
+      autoLogoutFinalTimer=setTimeout(async()=>{ if(!activeProfileId || $('app').classList.contains('hidden')) return; const ok=await saveBeforeLogoutIfNeeded(); if(ok){ await performLogout('Automatic logout after 3 minutes of inactivity with save-before-logout check'); alert('ProfitPilot logged out automatically after inactivity. Your records were not deleted.'); }else{ stayLoggedIn(); } }, AUTO_LOGOUT_DELAY_MS);
+      autoLockTimer=autoLogoutFinalTimer;
+    };
+    const originalPerformLogoutForTest10 = performLogout;
+    performLogout = async function(reason){ hideLogoutCountdown(); clearTimeout(autoLogoutWarningTimer); clearTimeout(autoLogoutFinalTimer); return originalPerformLogoutForTest10(reason); };
+
+    function queueReceiptRetry(transactionId, meta){
+      const p=currentProfile(); if(!p) return;
+      p.receiptRetryQueue=Array.isArray(p.receiptRetryQueue)?p.receiptRetryQueue:[];
+      if(!p.receiptRetryQueue.some(x=>x.transactionId===transactionId)) p.receiptRetryQueue.push({id:makeId(),transactionId,queuedAt:nowIso(),fileName:(meta&&meta.fileName)||'proof file',reason:(meta&&meta.status)||'metadata only'});
+    }
+    const originalProcessTransactionProofFileForTest10 = processTransactionProofFile;
+    processTransactionProofFile = async function(transactionId, existingAttachment){
+      const meta=await originalProcessTransactionProofFileForTest10(transactionId, existingAttachment);
+      if(meta && (!meta.storagePath || String(meta.status||'').toLowerCase().includes('failed'))) queueReceiptRetry(transactionId, meta);
+      return meta;
+    };
+    async function processReceiptRetryQueue(){
+      const p=currentProfile(); if(!p) return alert('No active profile.');
+      const q=Array.isArray(p.receiptRetryQueue)?p.receiptRetryQueue:[];
+      if(!q.length) return alert('No receipt uploads are waiting for retry.');
+      alert('Receipt retry queue found '+q.length+' item(s). For privacy and browser security, please open each affected transaction, choose the file again, and save. The app cannot reuse old local file contents after a failed upload.');
+    }
+
+    async function loadActiveProfileFromSupabase(){
+      const c=getSupabaseClient(), user=await getSupabaseUser();
+      if(!c) return alert('Supabase is not configured.'); if(!user) return alert('You are not signed into Supabase.');
+      const {data,error}=await c.from(CLOUD_TABLES.profiles).select('*').eq('user_id',user.id).order('updated_at',{ascending:false});
+      if(error) return alert('Cloud load failed: '+explainError(error)); if(!data||!data.length) return alert('No cloud profile rows found.');
+      const local=currentProfile(); const newest=data[0];
+      if(local){
+        const localTime=new Date(local.updatedAt||store.updatedAt||0).getTime(); const cloudTime=new Date(newest.updated_at||newest.last_cloud_save_at||0).getTime();
+        if(cloudTime && localTime && Math.abs(cloudTime-localTime)>1000){
+          const newer=cloudTime>localTime?'cloud':'local cache';
+          const msg=`Cloud conflict check: ${newer} appears newer.\n\nCloud updated: ${newest.updated_at||newest.last_cloud_save_at||'unknown'}\nLocal updated: ${local.updatedAt||store.updatedAt||'unknown'}\n\nExport JSON before continuing? Click Cancel to stop.`;
+          if(!confirm(msg)) return;
+        }
+      }
+      if(!confirm('Load from cloud can replace local cache. Export JSON first if needed. Continue?')) return;
+      store.profiles=data.map(row=>{ const p=row.profile_data||{}; collectionNames().forEach(k=>p[k]=Array.isArray(p[k])?p[k]:[]); p.ledgerEntries=Array.isArray(p.ledgerEntries)?p.ledgerEntries:[]; p.receiptRetryQueue=Array.isArray(p.receiptRetryQueue)?p.receiptRetryQueue:[]; p.monthlyClosing=Array.isArray(p.monthlyClosing)?p.monthlyClosing:[]; p.id=p.id||makeId(); p.profileKey=row.profile_key||p.profileKey; p.username=row.username||p.username; p.password='supabase-auth'; p.lastCloudSaveAt=row.last_cloud_save_at||row.updated_at; return p; });
+      activeProfileId=store.profiles[0].id; store.activeProfileId=activeProfileId; localStorage.setItem(STORE_KEY, JSON.stringify(store)); unsavedCloudChanges=false; addAudit('Cloud Load','Loaded profile data from Supabase after conflict check.'); openApp();
+    }
+
+    const originalBuildReviewIssuesForTest10 = buildReviewIssues;
+    buildReviewIssues = function(){
+      const issues=originalBuildReviewIssuesForTest10(); const p=currentProfile(); if(!p) return issues;
+      (p.receiptRetryQueue||[]).forEach(q=>issues.push(['Review','Receipt Retry Queue',`Receipt upload waiting for retry: ${q.fileName}`, 'Open the affected transaction, choose the file again, and save while signed into Supabase.']));
+      const r=recordingCompletionScore(); if(r.score<70) issues.push(['Medium','Recording Completion Score',`Recording health is ${r.score}%`, 'Use the checklist, attach receipts, resolve duplicates, and save/backup data.']);
+      return issues;
+    };
+    const originalRenderReviewCenterForTest10 = renderReviewCenter;
+    renderReviewCenter = function(){
+      originalRenderReviewCenterForTest10();
+      if($('reviewCloudStatus')){
+        const p=currentProfile(); const retryCount=p?(p.receiptRetryQueue||[]).length:0; const score=recordingCompletionScore().score;
+        $('reviewCloudStatus').innerHTML += `<hr><strong>Recording completion score:</strong> ${score}%<br><strong>Receipt upload retry queue:</strong> ${retryCount} item(s). ${retryCount?'<button onclick="processReceiptRetryQueue()">Review Retry Queue</button>':''}`;
+      }
+    };
+    const originalRenderCloudReadinessDashboardForTest10 = renderCloudReadinessDashboard;
+    renderCloudReadinessDashboard = function(){
+      originalRenderCloudReadinessDashboardForTest10();
+      if(!$('cloudReadinessDashboard')) return; const p=currentProfile(); const retryCount=p?(p.receiptRetryQueue||[]).length:0; const score=recordingCompletionScore().score;
+      $('cloudReadinessDashboard').innerHTML += readinessCard('Cloud conflict protection', true, 'Manual Load from Cloud now checks whether cloud or local cache appears newer before replacing data.');
+      $('cloudReadinessDashboard').innerHTML += readinessCard('Receipt upload retry queue', retryCount===0, retryCount?`${retryCount} receipt(s) need re-attachment and retry.`:'No receipt uploads waiting for retry.');
+      $('cloudReadinessDashboard').innerHTML += readinessCard('Recording completion score', score>=80, `Current score: ${score}%.`);
+    };
+
+    window.addEventListener("beforeunload",function(e){ if(unsavedCloudChanges){ e.preventDefault(); e.returnValue="You may have unsaved cloud changes."; }});
+    function init(){ renderTabs(); setDefaultDates(); renderIntegrityReport(); if(activeProfileId&&currentProfile()) openApp(); console.log(VERSION+" loaded."); }
+    init();
+  </script>
+</body>
+</html>
